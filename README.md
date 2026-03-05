@@ -117,6 +117,48 @@ All features are computed with **strict look-back** — no future data is used w
 
 ---
 
+## 🧠 Phase 2 — Deep Learning & Explainability
+
+Run the advanced models pipeline:
+
+```bash
+python models/advanced_models.py
+```
+
+### New Models
+
+| Model | Config | Accuracy | ROC-AUC |
+|---|---|---|---|
+| **LightGBM** | 1000 trees, early stop, balanced | 50.9% | 0.647 |
+| **MLP Neural Net** | 256→128→64 ReLU, Adam, early stop | 56.3% | 0.677 |
+
+### SHAP Explainability (LightGBM)
+
+SHAP analysis reveals **why** the model makes each prediction:
+
+| Chart | Description |
+|---|---|
+| `shap_summary_beeswarm.png` | Feature impact on Home Win probability |
+| `shap_bar_chart.png` | Global feature importance (mean \|SHAP\|) |
+| `shap_dependence.png` | How top features affect predictions |
+| `shap_waterfall.png` | Per-match prediction explanations |
+
+**Top predictive features** (by SHAP): `elo_diff` (0.27) → `home_elo_before` (0.10) → `home_shots_roll5` (0.08)
+
+### Full 6-Model Leaderboard (2023-24 test season)
+
+| Model | Accuracy | ROC-AUC | Brier |
+|---|---|---|---|
+| **LR (Phase 1)** ⭐ | **58.6%** | 0.682 | 0.183 |
+| Stacking (Phase 1) | 58.3% | **0.685** | 0.184 |
+| XGB tuned (Phase 1) | 58.0% | 0.666 | 0.187 |
+| MLP Neural Net 🆕 | 56.3% | 0.677 | 0.187 |
+| Random Forest | 53.0% | 0.667 | 0.194 |
+| LightGBM 🆕 | 50.9% | 0.647 | 0.198 |
+
+
+---
+
 ## 🗂 Data Source
 
 Season CSV files sourced from [football-data.co.uk](https://www.football-data.co.uk/englandm.php) covering seasons **2010–11 through 2024–25**.
