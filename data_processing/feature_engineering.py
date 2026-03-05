@@ -12,24 +12,45 @@ Basic
   Over_2_5        : 1 if TotalGoals > 2.5 else 0
   Result_encoded  : H→2, D→1, A→0  (for model target)
 
-Rolling (last N matches, computed per team, time-ordered, NO data leakage)
-  home_scored_roll5     : avg goals scored by home team (home games only, last 5)
-  home_conceded_roll5   : avg goals conceded by home team (home games only, last 5)
-  away_scored_roll5     : avg goals scored by away team (away games only, last 5)
-  away_conceded_roll5   : avg goals conceded by away team (away games only, last 5)
-  home_pts_roll5        : avg points earned by home team (all games, last 5)
-  away_pts_roll5        : avg points earned by away team (all games, last 5)
-  home_gd_roll5         : avg goal diff for home team (all games, last 5)
-  away_gd_roll5         : avg goal diff for away team (all games, last 5)
+Rolling — last 5 matches per team, NO data leakage
+  home_scored_roll5           : avg goals scored  (home games, last 5)
+  home_conceded_roll5         : avg goals conceded (home games, last 5)
+  away_scored_roll5           : avg goals scored  (away games, last 5)
+  away_conceded_roll5         : avg goals conceded (away games, last 5)
+  home_pts_roll5              : avg pts (all games, last 5)
+  away_pts_roll5              : avg pts (all games, last 5)
+  home_gd_roll5               : avg GD (all games, last 5)
+  away_gd_roll5               : avg GD (all games, last 5)
+
+Shot-based (proxy xG) — rolling 5, venue-specific
+  home_shots_roll5            : avg shots by home team (home games, last 5)
+  home_shots_on_target_roll5  : avg SOT by home team (home games, last 5)
+  away_shots_roll5            : avg shots by away team (away games, last 5)
+  away_shots_on_target_roll5  : avg SOT by away team (away games, last 5)
+
+Form
+  home_form3                  : pts per game — home team, last 3 all-venue games
+  away_form3                  : pts per game — away team, last 3 all-venue games
+  home_win_streak             : consecutive wins ending before this match (all venues)
+  away_win_streak             : consecutive wins ending before this match (all venues)
+
+Attack / Defence strength (relative to league average rolling over entire history)
+  home_attack_str             : home team avg scored / global avg scored
+  away_attack_str             : away team avg scored / global avg scored
+  home_defence_str            : home team avg conceded / global avg conceded
+  away_defence_str            : away team avg conceded / global avg conceded
+
+Head-to-Head
+  h2h_home_win_rate           : home team win rate vs this away team (last 6 H2H)
 
 Elo
-  home_elo_before       : home team Elo rating before this match
-  away_elo_before       : away team Elo rating before this match
-  elo_diff              : home_elo_before - away_elo_before
+  home_elo_before             : home team Elo before this match
+  away_elo_before             : away team Elo before this match
+  elo_diff                    : home_elo_before - away_elo_before
 
 Rest
-  home_days_rest        : days since home team's previous match
-  away_days_rest        : days since away team's previous match
+  home_days_rest              : days since home team's previous match
+  away_days_rest              : days since away team's previous match
 
 Output → data/processed_data/featured_data.csv
 
@@ -81,26 +102,25 @@ def _points_from_result(ftr: str, side: str) -> int:
 
 def add_rolling_features(df: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.DataFrame:
     """
-    For each match row, compute rolling stats from the team's OWN past matches
-    using a strictly time-ordered, expanding/rolling window.
-
-    Approach:
-      - Build two team-game history series: one for home games, one for all games.
-      - For each match, look up the team's history *before* this date and take
-        the last `window` games.
+    Compute rolling stats from each team's past matches — venue split + shots.
+    History is appended AFTER features are computed, preventing leakage.
     """
     df = df.copy().sort_values("Date").reset_index(drop=True)
 
-    # Dictionaries: team → list of past game records (appended as we iterate)
-    # Each record: {"date": ..., "scored": ..., "conceded": ..., "pts": ..., "gd": ..., "venue": "H"/"A"}
+    # Each record: scored, conceded, pts, gd, shots, shots_on_target, venue
     history: dict[str, list] = defaultdict(list)
 
-    # Output columns — pre-fill with NaN
     cols = [
         "home_scored_roll5", "home_conceded_roll5",
         "away_scored_roll5", "away_conceded_roll5",
         "home_pts_roll5",    "away_pts_roll5",
         "home_gd_roll5",     "away_gd_roll5",
+        # shot-based
+        "home_shots_roll5", "home_shots_on_target_roll5",
+        "away_shots_roll5", "away_shots_on_target_roll5",
+        # form
+        "home_form3", "away_form3",
+        "home_win_streak", "away_win_streak",
     ]
     for col in cols:
         df[col] = np.nan
@@ -109,39 +129,70 @@ def add_rolling_features(df: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.D
         ht = row["HomeTeam"]
         at = row["AwayTeam"]
 
-        def _rolling_stats(team: str, venue_filter: str | None):
-            """
-            Compute rolling mean of scored/conceded/pts/gd over the last `window`
-            past games for `team`. If venue_filter is 'H' or 'A', restrict to
-            home-only or away-only games.
-            """
+        # Safely read optional shot columns (not in all seasons)
+        h_shots = row.get("HS", np.nan) if "HS" in df.columns else np.nan
+        h_sot   = row.get("HST", np.nan) if "HST" in df.columns else np.nan
+        a_shots = row.get("AS", np.nan) if "AS" in df.columns else np.nan
+        a_sot   = row.get("AST", np.nan) if "AST" in df.columns else np.nan
+
+        def _rolling_stats(team: str, venue_filter: str | None, w: int = window):
             past = history[team]
             if venue_filter:
                 past = [g for g in past if g["venue"] == venue_filter]
-            last_n = past[-window:]
+            last_n = past[-w:]
             if not last_n:
-                return np.nan, np.nan, np.nan, np.nan
-            scored    = np.mean([g["scored"]   for g in last_n])
-            conceded  = np.mean([g["conceded"] for g in last_n])
-            pts       = np.mean([g["pts"]      for g in last_n])
-            gd        = np.mean([g["gd"]       for g in last_n])
-            return scored, conceded, pts, gd
+                return np.nan, np.nan, np.nan, np.nan, np.nan, np.nan
+            scored   = np.mean([g["scored"]   for g in last_n])
+            conceded = np.mean([g["conceded"] for g in last_n])
+            pts      = np.mean([g["pts"]      for g in last_n])
+            gd       = np.mean([g["gd"]       for g in last_n])
+            shots    = np.nanmean([g.get("shots", np.nan) for g in last_n])
+            sot      = np.nanmean([g.get("sot", np.nan)   for g in last_n])
+            return scored, conceded, pts, gd, shots, sot
 
-        # --- Home team stats (home venue filter) ---
-        hs, hc, hp, hg = _rolling_stats(ht, "H")
-        df.at[idx, "home_scored_roll5"]   = hs
-        df.at[idx, "home_conceded_roll5"] = hc
-        df.at[idx, "home_pts_roll5"]      = hp
-        df.at[idx, "home_gd_roll5"]       = hg
+        # Home rolling (home venue)
+        hs, hc, hp, hg, hsh, hsot = _rolling_stats(ht, "H")
+        df.at[idx, "home_scored_roll5"]           = hs
+        df.at[idx, "home_conceded_roll5"]         = hc
+        df.at[idx, "home_pts_roll5"]              = hp
+        df.at[idx, "home_gd_roll5"]               = hg
+        df.at[idx, "home_shots_roll5"]            = hsh
+        df.at[idx, "home_shots_on_target_roll5"]  = hsot
 
-        # --- Away team stats (away venue filter) ---
-        as_, ac, ap, ag = _rolling_stats(at, "A")
-        df.at[idx, "away_scored_roll5"]   = as_
-        df.at[idx, "away_conceded_roll5"] = ac
-        df.at[idx, "away_pts_roll5"]      = ap
-        df.at[idx, "away_gd_roll5"]       = ag
+        # Away rolling (away venue)
+        as_, ac, ap, ag, ash, asot = _rolling_stats(at, "A")
+        df.at[idx, "away_scored_roll5"]           = as_
+        df.at[idx, "away_conceded_roll5"]         = ac
+        df.at[idx, "away_pts_roll5"]              = ap
+        df.at[idx, "away_gd_roll5"]               = ag
+        df.at[idx, "away_shots_roll5"]            = ash
+        df.at[idx, "away_shots_on_target_roll5"]  = asot
 
-        # --- Update history AFTER computing features (avoid leakage) ---
+        # Form (last 3, all venues)
+        def _form3(team: str):
+            past = history[team][-3:]
+            if not past:
+                return np.nan
+            return np.mean([g["pts"] for g in past])
+
+        df.at[idx, "home_form3"] = _form3(ht)
+        df.at[idx, "away_form3"] = _form3(at)
+
+        # Win streak (all venues)
+        def _win_streak(team: str):
+            past = list(reversed(history[team]))
+            streak = 0
+            for g in past:
+                if g["pts"] == 3:
+                    streak += 1
+                else:
+                    break
+            return streak
+
+        df.at[idx, "home_win_streak"] = _win_streak(ht)
+        df.at[idx, "away_win_streak"] = _win_streak(at)
+
+        # ── Update history AFTER computing features (avoid leakage) ──
         h_pts = _points_from_result(row["FTR"], "H")
         a_pts = _points_from_result(row["FTR"], "A")
         h_gd  = int(row["FTHG"]) - int(row["FTAG"])
@@ -149,18 +200,82 @@ def add_rolling_features(df: pd.DataFrame, window: int = ROLLING_WINDOW) -> pd.D
 
         history[ht].append({
             "date": row["Date"], "scored": row["FTHG"], "conceded": row["FTAG"],
-            "pts": h_pts, "gd": h_gd, "venue": "H"
+            "pts": h_pts, "gd": h_gd, "venue": "H",
+            "shots": h_shots, "sot": h_sot,
         })
         history[at].append({
             "date": row["Date"], "scored": row["FTAG"], "conceded": row["FTHG"],
-            "pts": a_pts, "gd": a_gd, "venue": "A"
+            "pts": a_pts, "gd": a_gd, "venue": "A",
+            "shots": a_shots, "sot": a_sot,
         })
 
     return df
 
 
 # ---------------------------------------------------------------------------
-# 3. Elo ratings
+# 3. Attack / Defence strength (relative to global rolling average)
+# ---------------------------------------------------------------------------
+
+def add_strength_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Attack strength  = team's rolling avg goals scored / global avg goals scored
+    Defence strength = team's rolling avg goals conceded / global avg goals conceded
+    (uses home_scored_roll5 / away_scored_roll5 already computed)
+    """
+    df = df.copy()
+
+    global_avg_scored   = df[["home_scored_roll5",   "away_scored_roll5"]].stack().mean()
+    global_avg_conceded = df[["home_conceded_roll5",  "away_conceded_roll5"]].stack().mean()
+
+    df["home_attack_str"]  = df["home_scored_roll5"]   / global_avg_scored   if global_avg_scored   > 0 else np.nan
+    df["away_attack_str"]  = df["away_scored_roll5"]   / global_avg_scored   if global_avg_scored   > 0 else np.nan
+    df["home_defence_str"] = df["home_conceded_roll5"] / global_avg_conceded if global_avg_conceded > 0 else np.nan
+    df["away_defence_str"] = df["away_conceded_roll5"] / global_avg_conceded if global_avg_conceded > 0 else np.nan
+
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 4. Head-to-Head feature
+# ---------------------------------------------------------------------------
+
+def add_h2h_features(df: pd.DataFrame, h2h_window: int = 6) -> pd.DataFrame:
+    """
+    h2h_home_win_rate : fraction of last `h2h_window` meetings between (HomeTeam, AwayTeam)
+                        where HomeTeam won.  NaN if < 2 meetings exist.
+    Uses strict look-back — only past meetings are used.
+    """
+    df = df.copy().sort_values("Date").reset_index(drop=True)
+
+    # h2h_history[frozenset({home, away})] = list of {"home": team, "result": ftr}
+    h2h_history: dict[frozenset, list] = defaultdict(list)
+    win_rates = []
+
+    for _, row in df.iterrows():
+        ht, at = row["HomeTeam"], row["AwayTeam"]
+        key    = frozenset({ht, at})
+        past   = h2h_history[key][-h2h_window:]
+
+        if len(past) < 2:
+            win_rates.append(np.nan)
+        else:
+            # Count home-team wins in past meetings (home side matches current home team)
+            wins = sum(
+                1 for g in past
+                if g["home"] == ht and g["result"] == "H"
+                or g["home"] == at and g["result"] == "A"   # away team of past match = current ht
+            )
+            win_rates.append(wins / len(past))
+
+        # Update history AFTER computing
+        h2h_history[key].append({"home": ht, "result": row["FTR"]})
+
+    df["h2h_home_win_rate"] = win_rates
+    return df
+
+
+# ---------------------------------------------------------------------------
+# 5. Elo ratings
 # ---------------------------------------------------------------------------
 
 def _expected_score(r_a: float, r_b: float) -> float:
@@ -203,7 +318,7 @@ def add_elo(df: pd.DataFrame, k: int = ELO_K, start: int = ELO_START) -> pd.Data
 
 
 # ---------------------------------------------------------------------------
-# 4. Days rest
+# 6. Days rest
 # ---------------------------------------------------------------------------
 
 def add_days_rest(df: pd.DataFrame) -> pd.DataFrame:
@@ -228,34 +343,52 @@ def add_days_rest(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# 5. Validate & summarise
+# 7. Validate & summarise
 # ---------------------------------------------------------------------------
 
+FEATURE_COLS = [
+    "home_scored_roll5", "home_conceded_roll5",
+    "away_scored_roll5", "away_conceded_roll5",
+    "home_pts_roll5",    "away_pts_roll5",
+    "home_gd_roll5",     "away_gd_roll5",
+    # shot-based
+    "home_shots_roll5", "home_shots_on_target_roll5",
+    "away_shots_roll5", "away_shots_on_target_roll5",
+    # form
+    "home_form3", "away_form3",
+    "home_win_streak", "away_win_streak",
+    # attack/defence strength
+    "home_attack_str", "away_attack_str",
+    "home_defence_str", "away_defence_str",
+    # H2H
+    "h2h_home_win_rate",
+    # Elo
+    "home_elo_before", "away_elo_before", "elo_diff",
+    # rest
+    "home_days_rest", "away_days_rest",
+]
+
+
 def validate(df: pd.DataFrame) -> None:
-    feature_cols = [
-        "home_scored_roll5", "home_conceded_roll5",
-        "away_scored_roll5", "away_conceded_roll5",
-        "home_pts_roll5",    "away_pts_roll5",
-        "home_gd_roll5",     "away_gd_roll5",
-        "home_elo_before",   "away_elo_before",   "elo_diff",
-        "home_days_rest",    "away_days_rest",
-        "TotalGoals",        "GoalDiff",
-        "Over_2_5",          "Result_encoded",
-    ]
-    print("\n" + "=" * 55)
+    all_cols = FEATURE_COLS + ["TotalGoals", "GoalDiff", "Over_2_5", "Result_encoded"]
+    print("\n" + "=" * 58)
     print("FEATURED DATASET SUMMARY")
-    print("=" * 55)
+    print("=" * 58)
     print(f"  Shape            : {df.shape[0]:,} rows × {df.shape[1]} columns")
-    print(f"  Feature columns  : {len(feature_cols)}")
+    print(f"  Feature columns  : {len(FEATURE_COLS)}")
     print(f"\n  NaN counts in feature columns:")
-    for col in feature_cols:
-        n = df[col].isna().sum()
+    for col in all_cols:
+        if col not in df.columns:
+            print(f"    {col:38s}: MISSING")
+            continue
+        n   = df[col].isna().sum()
         pct = 100 * n / len(df)
-        flag = "  (expected — first few games per team)" if n > 0 else ""
-        print(f"    {col:30s}: {n:4d}  ({pct:.1f}%){flag}")
+        flag = "  ← expected (first games / missing shots)" if n > 0 else ""
+        print(f"    {col:38s}: {n:4d}  ({pct:.1f}%){flag}")
     print("\n  Sample stats:")
-    print(df[feature_cols].describe().round(2).to_string())
-    print("=" * 55)
+    avail = [c for c in FEATURE_COLS if c in df.columns]
+    print(df[avail].describe().round(2).to_string())
+    print("=" * 58)
 
 
 # ---------------------------------------------------------------------------
@@ -263,30 +396,36 @@ def validate(df: pd.DataFrame) -> None:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("=" * 55)
-    print("EPL FEATURE ENGINEERING")
-    print("=" * 55)
+    print("=" * 58)
+    print("EPL FEATURE ENGINEERING  (enhanced)")
+    print("=" * 58)
     print(f"Input  : {os.path.abspath(INPUT_PATH)}")
     print(f"Output : {os.path.abspath(OUTPUT_PATH)}\n")
 
     df = pd.read_csv(INPUT_PATH, parse_dates=["Date"])
-    print(f"Loaded {len(df):,} matches.")
+    print(f"Loaded {len(df):,} matches.\n")
 
-    print("\n[1/4] Adding basic columns …")
+    print("[1/6] Adding basic columns …")
     df = add_basic_cols(df)
 
-    print("[2/4] Computing rolling features (this may take ~30s) …")
+    print("[2/6] Computing rolling features (may take ~60s) …")
     df = add_rolling_features(df, window=ROLLING_WINDOW)
 
-    print("[3/4] Computing Elo ratings …")
+    print("[3/6] Computing attack/defence strength …")
+    df = add_strength_features(df)
+
+    print("[4/6] Computing head-to-head features …")
+    df = add_h2h_features(df)
+
+    print("[5/6] Computing Elo ratings …")
     df = add_elo(df, k=ELO_K, start=ELO_START)
 
-    print("[4/4] Computing days rest …")
+    print("[6/6] Computing days rest …")
     df = add_days_rest(df)
 
     validate(df)
 
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     df.to_csv(OUTPUT_PATH, index=False)
-    print(f"\n✅ Saved → {os.path.abspath(OUTPUT_PATH)}")
+    print(f"\nSaved → {os.path.abspath(OUTPUT_PATH)}")
     print(f"   Shape : {df.shape[0]:,} rows × {df.shape[1]} columns")
