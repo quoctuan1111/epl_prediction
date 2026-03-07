@@ -251,6 +251,17 @@ def predict():
 # Refresh route
 # ---------------------------------------------------------------------------
 
+def _bg_refresh():
+    try:
+        sys.path.insert(0, BASE_DIR)
+        from data_processing.refresh_pipeline import run_refresh
+        run_refresh()
+        _reload_data()
+    except Exception as exc:
+        app.logger.exception("Background refresh failed: %s", exc)
+    finally:
+        REFRESH_LOCK.release()
+
 @app.route("/refresh", methods=["POST"])
 def refresh():
     """
@@ -264,17 +275,9 @@ def refresh():
     if not REFRESH_LOCK.acquire(blocking=False):
         return jsonify({"error": "Refresh already in progress"}), 429
 
-    try:
-        sys.path.insert(0, BASE_DIR)
-        from data_processing.refresh_pipeline import run_refresh
-        result = run_refresh()
-        _reload_data()
-        return jsonify({"status": "ok", **result})
-    except Exception as exc:
-        app.logger.exception("Refresh failed: %s", exc)
-        return jsonify({"error": str(exc)}), 500
-    finally:
-        REFRESH_LOCK.release()
+    thread = threading.Thread(target=_bg_refresh)
+    thread.start()
+    return jsonify({"status": "started", "message": "Refresh started in background"})
 
 
 # ---------------------------------------------------------------------------
@@ -283,13 +286,21 @@ def refresh():
 
 @app.route("/last_refresh")
 def last_refresh():
+    payload = {
+        "timestamp": None,
+        "matches": None,
+        "new_data": None,
+        "is_refreshing": REFRESH_LOCK.locked()
+    }
     if not os.path.exists(REFRESH_LOG):
-        return jsonify({"timestamp": None, "matches": None, "new_data": None})
+        return jsonify(payload)
     try:
         with open(REFRESH_LOG) as f:
-            return jsonify(json.load(f))
+            data = json.load(f)
+            payload.update(data)
+            return jsonify(payload)
     except Exception:
-        return jsonify({"timestamp": None, "matches": None, "new_data": None})
+        return jsonify(payload)
 
 
 # ---------------------------------------------------------------------------

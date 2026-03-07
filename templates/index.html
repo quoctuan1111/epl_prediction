@@ -734,11 +734,53 @@
     return div;
   }
 
+  async function pollRefreshStatus() {
+    const el = document.getElementById("last-updated-text");
+    el.textContent = "Refreshing data in background... Please wait ⏳";
+    
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > 60) {
+        clearInterval(interval);
+        return;
+      }
+      try {
+        const res = await fetch("/last_refresh");
+        const data = await res.json();
+        
+        if (!data.is_refreshing) {
+          clearInterval(interval);
+          const btn = document.getElementById("refresh-btn");
+          const icon = document.getElementById("refresh-icon");
+          btn.disabled = false;
+          icon.className = "";
+          icon.textContent = "🔄";
+          
+          await loadLastRefresh();
+          await loadUpcoming();
+        }
+      } catch (e) {
+        // ignore errors during polling
+      }
+    }, 3000);
+  }
+
   async function loadLastRefresh() {
     try {
       const res  = await fetch("/last_refresh");
       const data = await res.json();
       const el   = document.getElementById("last-updated-text");
+      
+      if (data.is_refreshing) {
+        const btn = document.getElementById("refresh-btn");
+        const icon = document.getElementById("refresh-icon");
+        btn.disabled = true;
+        icon.className = "spin";
+        pollRefreshStatus();
+        return;
+      }
+
       if (data.timestamp) {
         const dt = new Date(data.timestamp);
         const fmt = dt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
@@ -760,13 +802,17 @@
 
     try {
       const res  = await fetch("/refresh", { method: "POST" });
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error("Server returned an invalid response. The refresh might still be running.");
+      }
       if (!res.ok) throw new Error(data.error || "Refresh failed");
-      await loadLastRefresh();
-      await loadUpcoming();
+      
+      pollRefreshStatus();
     } catch (e) {
-      alert("Refresh failed: " + e.message);
-    } finally {
+      alert("Refresh request failed: " + e.message);
       btn.disabled = false;
       icon.className = "";
       icon.textContent = "🔄";
