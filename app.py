@@ -4,12 +4,20 @@ app.py — Flask web app for EPL Match Predictor
 Wraps the CLI demo logic into a web API + serves the frontend.
 
 Routes:
-  GET  /           → index.html (team picker UI)
-  GET  /teams      → JSON list of available teams
-  POST /predict    → JSON prediction result
+  GET  /              → index.html (team picker UI)
+  GET  /teams         → JSON list of available teams
+  POST /predict       → JSON prediction result
+  POST /refresh       → trigger full data refresh pipeline
+  GET  /upcoming      → JSON list of upcoming fixtures with predictions
+  GET  /last_refresh  → JSON metadata from last pipeline run
 """
 
+import json
 import os
+import sys
+import threading
+from datetime import datetime, timezone
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -40,14 +48,27 @@ FEATURE_COLS = [
     "h2h_home_win_rate",
 ]
 
+REFRESH_LOG  = os.path.join(BASE_DIR, "data", "last_refresh.json")
+REFRESH_LOCK = threading.Lock()
+
 # ---------------------------------------------------------------------------
 # Load data & model once at startup
 # ---------------------------------------------------------------------------
+
 df    = pd.read_csv(FEATURED_DATA, parse_dates=["Date"])
 model = joblib.load(MODEL_PATH)
 
 available_feat_cols = [c for c in FEATURE_COLS if c in df.columns]
 TEAMS = sorted(set(df["HomeTeam"].unique()) | set(df["AwayTeam"].unique()))
+
+
+def _reload_data():
+    """Reload df and TEAMS from disk after a pipeline refresh."""
+    global df, available_feat_cols, TEAMS
+    df = pd.read_csv(FEATURED_DATA, parse_dates=["Date"])
+    available_feat_cols = [c for c in FEATURE_COLS if c in df.columns]
+    TEAMS = sorted(set(df["HomeTeam"].unique()) | set(df["AwayTeam"].unique()))
+    app.logger.info("Data reloaded: %d matches, %d teams.", len(df), len(TEAMS))
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +235,109 @@ def predict():
         "stats":       stats,
     })
 
+
+# ---------------------------------------------------------------------------
+# Refresh route
+# ---------------------------------------------------------------------------
+
+@app.route("/refresh", methods=["POST"])
+def refresh():
+    """
+    Trigger the full data refresh pipeline.
+    Optional query param: ?secret=YOUR_KEY (compare against env REFRESH_SECRET).
+    """
+    secret_env = os.environ.get("REFRESH_SECRET", "")
+    if secret_env and request.args.get("secret", "") != secret_env:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    if not REFRESH_LOCK.acquire(blocking=False):
+        return jsonify({"error": "Refresh already in progress"}), 429
+
+    try:
+        sys.path.insert(0, BASE_DIR)
+        from data_processing.refresh_pipeline import run_refresh
+        result = run_refresh()
+        _reload_data()
+        return jsonify({"status": "ok", **result})
+    except Exception as exc:
+        app.logger.exception("Refresh failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        REFRESH_LOCK.release()
+
+
+# ---------------------------------------------------------------------------
+# Last refresh metadata route
+# ---------------------------------------------------------------------------
+
+@app.route("/last_refresh")
+def last_refresh():
+    if not os.path.exists(REFRESH_LOG):
+        return jsonify({"timestamp": None, "matches": None, "new_data": None})
+    try:
+        with open(REFRESH_LOG) as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify({"timestamp": None, "matches": None, "new_data": None})
+
+
+# ---------------------------------------------------------------------------
+# Upcoming fixtures route
+# ---------------------------------------------------------------------------
+
+@app.route("/upcoming")
+def upcoming():
+    """Return upcoming EPL fixtures with model predictions."""
+    try:
+        sys.path.insert(0, BASE_DIR)
+        from data_processing.upcoming_fixtures import get_fixtures
+        fixtures = get_fixtures()
+    except Exception as exc:
+        app.logger.warning("Could not fetch fixtures: %s", exc)
+        return jsonify({"error": str(exc), "fixtures": []}), 500
+
+    results = []
+    for fix in fixtures:
+        home_team = fix["home_team"]
+        away_team = fix["away_team"]
+        home_rest = fix.get("home_rest", 7)
+        away_rest = fix.get("away_rest", 7)
+
+        if home_team not in TEAMS or away_team not in TEAMS:
+            app.logger.debug("Skipping fixture — unknown team(s): %s vs %s",
+                             home_team, away_team)
+            continue
+
+        try:
+            h_feats = get_team_features(home_team, "home")
+            a_feats = get_team_features(away_team, "away")
+            X       = build_feature_vector(h_feats, a_feats, home_team, away_team,
+                                           home_rest, away_rest)
+            probs           = model.predict_proba(X)[0]
+            p_away, p_draw, p_home = float(probs[0]), float(probs[1]), float(probs[2])
+            labels          = ["Away Win", "Draw", "Home Win"]
+            winner          = labels[int(np.argmax(probs))]
+
+            results.append({
+                "home_team": home_team,
+                "away_team": away_team,
+                "date":      fix["date"],
+                "p_home":    round(p_home, 4),
+                "p_draw":    round(p_draw, 4),
+                "p_away":    round(p_away, 4),
+                "winner":    winner,
+                "confidence": round(float(np.max(probs)), 4),
+            })
+        except Exception as exc:
+            app.logger.warning("Prediction failed for %s vs %s: %s",
+                               home_team, away_team, exc)
+
+    return jsonify({"fixtures": results, "count": len(results)})
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

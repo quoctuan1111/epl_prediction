@@ -278,6 +278,144 @@
       font-size: 12px;
       text-align: center;
     }
+
+    /* ─── Upcoming Fixtures ─── */
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 36px 0 20px;
+    }
+    .section-divider h2 {
+      font-size: 16px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .section-divider hr {
+      flex: 1;
+      border: none;
+      border-top: 1px solid var(--border);
+    }
+
+    .refresh-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .last-updated {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .btn-refresh {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      background: rgba(56,189,248,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(56,189,248,0.3);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .btn-refresh:hover { background: rgba(56,189,248,0.18); transform: translateY(-1px); }
+    .btn-refresh:active { transform: translateY(0); }
+    .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+    .spin { animation: spin 0.9s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .fixture-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .fixture-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 12px;
+      align-items: center;
+      animation: slideIn 0.3s ease;
+    }
+
+    .fix-team {
+      display: flex;
+      flex-direction: column;
+    }
+    .fix-team.right { text-align: right; }
+    .fix-team-name {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text);
+    }
+    .fix-prob {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .fix-prob span { font-weight: 600; }
+    .fix-prob-home span { color: var(--green); }
+    .fix-prob-away span { color: var(--red); }
+
+    .fix-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .fix-date {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .fix-vs {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .fix-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+    .fix-badge.home-win  { background: rgba(34,197,94,0.15);  color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+    .fix-badge.away-win  { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+    .fix-badge.draw-win  { background: rgba(250,204,21,0.12);  color: #facc15; border: 1px solid rgba(250,204,21,0.3); }
+
+    .fix-bar-row {
+      grid-column: 1 / -1;
+      display: flex;
+      height: 6px;
+      border-radius: 6px;
+      overflow: hidden;
+      gap: 2px;
+    }
+    .fix-bar-home { background: var(--green);  transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
+    .fix-bar-draw { background: var(--yellow); transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
+    .fix-bar-away { background: var(--red);    transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
+
+    .upcoming-empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      padding: 32px;
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+    .upcoming-loading {
+      text-align: center;
+      color: var(--muted);
+      padding: 24px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -381,6 +519,23 @@
 
     <div class="h2h-note" id="h2h-note" style="display:none"></div>
   </div>
+  <!-- Upcoming Gameweek -->
+  <div class="section-divider">
+    <h2>📅 Upcoming Gameweek Predictions</h2>
+    <hr />
+  </div>
+
+  <div class="refresh-bar">
+    <span class="last-updated" id="last-updated-text">Loading data status…</span>
+    <button class="btn-refresh" id="refresh-btn" onclick="triggerRefresh()">
+      <span id="refresh-icon">🔄</span> Refresh Data
+    </button>
+  </div>
+
+  <div id="fixture-list" class="fixture-list">
+    <div class="upcoming-loading">Loading upcoming fixtures…</div>
+  </div>
+
 </main>
 
 <footer>
@@ -511,6 +666,116 @@
     document.getElementById(barId).style.width = (prob * 100).toFixed(1) + "%";
     document.getElementById(pctId).textContent = (prob * 100).toFixed(1) + "%";
   }
+
+  /* ──────────────────────────────────
+     Upcoming Fixtures
+  ────────────────────────────────── */
+
+  async function loadUpcoming() {
+    const container = document.getElementById("fixture-list");
+    container.innerHTML = '<div class="upcoming-loading">⏳ Loading upcoming fixtures…</div>';
+    try {
+      const res  = await fetch("/upcoming");
+      const data = await res.json();
+      const fixtures = data.fixtures || [];
+      if (fixtures.length === 0) {
+        container.innerHTML = '<div class="upcoming-empty">No upcoming fixtures found.<br><small>Run a data refresh or check back after the next gameweek is published.</small></div>';
+        return;
+      }
+      container.innerHTML = "";
+      fixtures.forEach((f, i) => {
+        const card = buildFixtureCard(f, i);
+        container.appendChild(card);
+      });
+    } catch (e) {
+      container.innerHTML = `<div class="upcoming-empty">⚠ Could not load fixtures: ${e.message}</div>`;
+    }
+  }
+
+  function buildFixtureCard(f, index) {
+    const div = document.createElement("div");
+    div.className = "fixture-card";
+    div.style.animationDelay = (index * 60) + "ms";
+
+    const pHome = (f.p_home * 100).toFixed(0);
+    const pDraw = (f.p_draw * 100).toFixed(0);
+    const pAway = (f.p_away * 100).toFixed(0);
+
+    let badgeClass = "draw-win";
+    let badgeLabel = `Draw ${pDraw}%`;
+    if (f.winner === "Home Win")  { badgeClass = "home-win"; badgeLabel = `🏠 Home ${pHome}%`; }
+    if (f.winner === "Away Win")  { badgeClass = "away-win"; badgeLabel = `✈ Away ${pAway}%`; }
+
+    const dateStr = f.date ? new Date(f.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "TBC";
+
+    div.innerHTML = `
+      <div class="fix-team">
+        <div class="fix-team-name">${f.home_team}</div>
+        <div class="fix-prob fix-prob-home">Home win <span>${pHome}%</span></div>
+      </div>
+
+      <div class="fix-center">
+        <span class="fix-date">${dateStr}</span>
+        <span class="fix-vs">VS</span>
+        <span class="fix-badge ${badgeClass}">${badgeLabel}</span>
+      </div>
+
+      <div class="fix-team right">
+        <div class="fix-team-name">${f.away_team}</div>
+        <div class="fix-prob fix-prob-away">Away win <span>${pAway}%</span></div>
+      </div>
+
+      <div class="fix-bar-row">
+        <div class="fix-bar-home" style="flex: ${f.p_home}"></div>
+        <div class="fix-bar-draw" style="flex: ${f.p_draw}"></div>
+        <div class="fix-bar-away" style="flex: ${f.p_away}"></div>
+      </div>
+    `;
+    return div;
+  }
+
+  async function loadLastRefresh() {
+    try {
+      const res  = await fetch("/last_refresh");
+      const data = await res.json();
+      const el   = document.getElementById("last-updated-text");
+      if (data.timestamp) {
+        const dt = new Date(data.timestamp);
+        const fmt = dt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+        el.textContent = `Last updated: ${fmt} UTC · ${data.matches?.toLocaleString() || '?'} matches`;
+      } else {
+        el.textContent = "Data has not been refreshed yet.";
+      }
+    } catch (_) {
+      document.getElementById("last-updated-text").textContent = "";
+    }
+  }
+
+  async function triggerRefresh() {
+    const btn  = document.getElementById("refresh-btn");
+    const icon = document.getElementById("refresh-icon");
+    btn.disabled = true;
+    icon.className = "spin";
+    icon.textContent = "⟳";
+
+    try {
+      const res  = await fetch("/refresh", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Refresh failed");
+      await loadLastRefresh();
+      await loadUpcoming();
+    } catch (e) {
+      alert("Refresh failed: " + e.message);
+    } finally {
+      btn.disabled = false;
+      icon.className = "";
+      icon.textContent = "🔄";
+    }
+  }
+
+  // Load on page start
+  loadLastRefresh();
+  loadUpcoming();
 </script>
 </body>
 </html>

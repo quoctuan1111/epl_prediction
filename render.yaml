@@ -7,3 +7,14 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: REFRESH_SECRET
+        value: ""          # optional: set a secret to protect the /refresh endpoint
+      - key: FOOTBALL_DATA_API_KEY
+        sync: false   # set the real value in Render dashboard → Environment
+
+  - type: cron
+    name: epl-daily-refresh
+    runtime: python
+    schedule: "0 6 * * *"   # 06:00 UTC = 13:00 ICT (Vietnam)
+    buildCommand: pip install -r requirements.txt
+    startCommand: python data_processing/refresh_pipeline.py
