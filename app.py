@@ -172,6 +172,14 @@ def build_feature_vector(h: dict, a: dict, home_team: str, away_team: str,
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+@app.route("/health")
+def health():
+    return {"status": "ok"}
+
+@app.route("/env-test")
+def env_test():
+    key = os.environ.get("FOOTBALL_DATA_API_KEY")
+    return {"key_loaded": bool(key)}
 
 @app.route("/")
 def index():
@@ -182,9 +190,6 @@ def index():
 def teams():
     return jsonify(TEAMS)
 
-@app.route("/health")
-def health():
-    return {"status": "ok"}
 
 @app.route("/predict", methods=["POST"])
 def predict():
