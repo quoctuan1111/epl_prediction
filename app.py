@@ -182,6 +182,9 @@ def index():
 def teams():
     return jsonify(TEAMS)
 
+@app.route("/health")
+def health():
+    return {"status": "ok"}
 
 @app.route("/predict", methods=["POST"])
 def predict():
