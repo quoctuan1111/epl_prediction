@@ -35,7 +35,6 @@ BASE_DIR        = os.path.join(os.path.dirname(__file__), "..")
 FEATURED_CSV    = os.path.join(BASE_DIR, "data", "processed_data", "featured_data.csv")
 RAW_CURRENT_CSV = os.path.join(BASE_DIR, "data", "raw", "2024_2025.csv")
 
-API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY", "")
 API_URL = "https://api.football-data.org/v4/competitions/PL/matches"
 
 TIMEOUT = 15
@@ -116,12 +115,15 @@ def _compute_rest(team: str, fixture_date: date,
 
 def _fetch_via_api(last_dates: dict[str, date]) -> list[dict]:
     """Use football-data.org v4 API to get upcoming PL fixtures."""
+    api_key = os.environ.get("FOOTBALL_DATA_API_KEY", "")
+    if not api_key:
+        return []
     today = date.today()
     date_from = today.strftime("%Y-%m-%d")
     date_to   = (today + timedelta(days=14)).strftime("%Y-%m-%d")
 
     params  = {"status": "SCHEDULED", "dateFrom": date_from, "dateTo": date_to}
-    headers = {"X-Auth-Token": API_KEY}
+    headers = {"X-Auth-Token": api_key}
 
     try:
         resp = requests.get(API_URL, params=params, headers=headers, timeout=TIMEOUT)
@@ -230,7 +232,8 @@ def get_fixtures(limit: int = 20) -> list[dict]:
     last_dates = _last_match_dates()
 
     fixtures = []
-    if API_KEY:
+    api_key = os.environ.get("FOOTBALL_DATA_API_KEY", "")
+    if api_key:
         fixtures = _fetch_via_api(last_dates)
 
     if not fixtures:
