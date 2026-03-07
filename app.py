@@ -18,6 +18,9 @@ import sys
 import threading
 from datetime import datetime, timezone
 
+from dotenv import load_dotenv
+load_dotenv()  # loads .env from project root — safe no-op if file absent
+
 import joblib
 import numpy as np
 import pandas as pd
