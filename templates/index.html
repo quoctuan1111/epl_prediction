@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>⚽ EPL Match Predictor</title>
+  <title>EPL Match Predictor</title>
   <meta name="description" content="Predict English Premier League match outcomes using machine learning. Get Win/Draw/Loss probabilities powered by an advanced WDL model." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -34,7 +34,7 @@
       align-items: center;
     }
 
-    /* ─── Hero ─── */
+    /* --- Hero --- */
     header {
       width: 100%;
       text-align: center;
@@ -422,7 +422,7 @@
 
 <header>
   <div class="badge">Machine Learning</div>
-  <h1>⚽ EPL Match Predictor</h1>
+  <h1>EPL Match Predictor</h1>
   <p>Pick any two Premier League teams and get instant Win / Draw / Loss probabilities powered by an ensemble WDL model.</p>
 </header>
 
@@ -431,7 +431,7 @@
   <div class="form-card">
     <div class="form-grid">
       <div class="field" id="home-field">
-        <label for="home-team">🏠 Home Team</label>
+        <label for="home-team">Home Team</label>
         <select id="home-team">
           {% for team in teams %}
           <option value="{{ team }}">{{ team }}</option>
@@ -440,7 +440,7 @@
       </div>
 
       <div class="field" id="away-field">
-        <label for="away-team">✈ Away Team</label>
+        <label for="away-team">Away Team</label>
         <select id="away-team">
           {% for team in teams %}
           <option value="{{ team }}" {% if loop.index == 2 %}selected{% endif %}>{{ team }}</option>
@@ -451,16 +451,16 @@
 
     <div class="rest-row">
       <div class="field">
-        <label for="home-rest">⏱ Home Days Rest</label>
+        <label for="home-rest">Home Days Rest</label>
         <input type="number" id="home-rest" value="7" min="0" max="30" />
       </div>
       <div class="field">
-        <label for="away-rest">⏱ Away Days Rest</label>
+        <label for="away-rest">Away Days Rest</label>
         <input type="number" id="away-rest" value="7" min="0" max="30" />
       </div>
     </div>
 
-    <button class="btn-predict" id="predict-btn" onclick="predict()">Predict Match Outcome ⚡</button>
+    <button class="btn-predict" id="predict-btn" onclick="predict()">Predict Match Outcome</button>
   </div>
 
   <!-- Error box -->
@@ -504,7 +504,7 @@
 
     <!-- Stats Table -->
     <div class="stats-section">
-      <h3>📊 Team Stats (last 5 games)</h3>
+      <h3>Team Stats (last 5 games)</h3>
       <table class="stats-table">
         <thead>
           <tr>
@@ -521,14 +521,14 @@
   </div>
   <!-- Upcoming Gameweek -->
   <div class="section-divider">
-    <h2>📅 Upcoming Gameweek Predictions</h2>
+    <h2>Upcoming Gameweek Predictions</h2>
     <hr />
   </div>
 
   <div class="refresh-bar">
     <span class="last-updated" id="last-updated-text">Loading data status…</span>
     <button class="btn-refresh" id="refresh-btn" onclick="triggerRefresh()">
-      <span id="refresh-icon">🔄</span> Refresh Data
+      <span id="refresh-icon"></span> Refresh Data
     </button>
   </div>
 
@@ -573,7 +573,7 @@
     resCard.style.display = "none";
 
     if (homeTeam === awayTeam) {
-      errBox.textContent = "⚠ Home and away teams must be different.";
+      errBox.textContent = "Home and away teams must be different.";
       errBox.style.display = "block";
       return;
     }
@@ -594,11 +594,11 @@
 
       renderResult(data);
     } catch (e) {
-      errBox.textContent = "❌ " + e.message;
+      errBox.textContent = e.message;
       errBox.style.display = "block";
     } finally {
       btn.disabled = false;
-      btn.textContent = "Predict Match Outcome ⚡";
+      btn.textContent = "Predict Match Outcome";
     }
   }
 
@@ -606,8 +606,8 @@
     // Header
     document.getElementById("res-home").textContent = d.home_team;
     document.getElementById("res-away").textContent = d.away_team;
-    document.getElementById("label-home").textContent = `🏠 ${d.home_team} Win`;
-    document.getElementById("label-away").textContent = `✈ ${d.away_team} Win`;
+    document.getElementById("label-home").textContent = `${d.home_team} Win`;
+    document.getElementById("label-away").textContent = `${d.away_team} Win`;
     document.getElementById("th-home").textContent   = d.home_team;
     document.getElementById("th-away").textContent   = d.away_team;
 
@@ -616,7 +616,7 @@
     const tier = conf > 0.50 ? "HIGH" : conf > 0.40 ? "MID" : "LOW";
     const tierLabel = conf > 0.50 ? "High Confidence" : conf > 0.40 ? "Moderate Confidence" : "Low Confidence";
     const badge = document.getElementById("verdict-badge");
-    badge.textContent = `🏆 ${d.winner}  ·  ${tierLabel} (${(conf*100).toFixed(1)}%)`;
+    badge.textContent = `${d.winner}  ·  ${tierLabel} (${(conf*100).toFixed(1)}%)`;
     badge.className = `verdict-badge verdict-${tier}`;
 
     // Prob bars (animated)
@@ -652,7 +652,7 @@
     // H2H
     const h2h = document.getElementById("h2h-note");
     if (d.h2h_home_win_rate !== null) {
-      h2h.textContent = `🔄 Head-to-Head: ${d.home_team} wins ${(d.h2h_home_win_rate*100).toFixed(0)}% of meetings as home side`;
+      h2h.textContent = `Head-to-Head: ${d.home_team} wins ${(d.h2h_home_win_rate*100).toFixed(0)}% of meetings as home side`;
       h2h.style.display = "block";
     } else {
       h2h.style.display = "none";
@@ -673,7 +673,7 @@
 
   async function loadUpcoming() {
     const container = document.getElementById("fixture-list");
-    container.innerHTML = '<div class="upcoming-loading">⏳ Loading upcoming fixtures…</div>';
+    container.innerHTML = '<div class="upcoming-loading">Loading upcoming fixtures…</div>';
     try {
       const res  = await fetch("/upcoming");
       const data = await res.json();
@@ -688,7 +688,7 @@
         container.appendChild(card);
       });
     } catch (e) {
-      container.innerHTML = `<div class="upcoming-empty">⚠ Could not load fixtures: ${e.message}</div>`;
+      container.innerHTML = `<div class="upcoming-empty">Could not load fixtures: ${e.message}</div>`;
     }
   }
 
@@ -703,8 +703,8 @@
 
     let badgeClass = "draw-win";
     let badgeLabel = `Draw ${pDraw}%`;
-    if (f.winner === "Home Win")  { badgeClass = "home-win"; badgeLabel = `🏠 Home ${pHome}%`; }
-    if (f.winner === "Away Win")  { badgeClass = "away-win"; badgeLabel = `✈ Away ${pAway}%`; }
+    if (f.winner === "Home Win")  { badgeClass = "home-win"; badgeLabel = `Home ${pHome}%`; }
+    if (f.winner === "Away Win")  { badgeClass = "away-win"; badgeLabel = `Away ${pAway}%`; }
 
     const dateStr = f.date ? new Date(f.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "TBC";
 
@@ -736,7 +736,7 @@
 
   async function pollRefreshStatus() {
     const el = document.getElementById("last-updated-text");
-    el.textContent = "Refreshing data in background... Please wait ⏳";
+    el.textContent = "Refreshing data in background... Please wait";
     
     let attempts = 0;
     const interval = setInterval(async () => {
@@ -755,7 +755,7 @@
           const icon = document.getElementById("refresh-icon");
           btn.disabled = false;
           icon.className = "";
-          icon.textContent = "🔄";
+          icon.textContent = "";
           
           await loadLastRefresh();
           await loadUpcoming();
@@ -798,7 +798,7 @@
     const icon = document.getElementById("refresh-icon");
     btn.disabled = true;
     icon.className = "spin";
-    icon.textContent = "⟳";
+    icon.textContent = "";
 
     try {
       const res  = await fetch("/refresh", { method: "POST" });
@@ -815,7 +815,7 @@
       alert("Refresh request failed: " + e.message);
       btn.disabled = false;
       icon.className = "";
-      icon.textContent = "🔄";
+      icon.textContent = "";
     }
   }
 
