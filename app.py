@@ -24,7 +24,17 @@ load_dotenv()  # loads .env from project root — safe no-op if file absent
 import joblib
 import numpy as np
 import pandas as pd
+import requests
 from flask import Flask, jsonify, render_template, request
+from tracking_store.prediction_store import (
+    get_accuracy_dashboard,
+    get_prediction_accuracy,
+    init_tracking_db,
+    latest_prediction_for_fixture,
+    resolve_prediction_if_needed,
+    result_label_from_score,
+    write_prediction,
+)
 
 app = Flask(__name__)
 
@@ -54,6 +64,32 @@ FEATURE_COLS = [
 REFRESH_LOG  = os.path.join(BASE_DIR, "data", "last_refresh.json")
 REFRESH_LOCK = threading.Lock()
 
+FOOTBALL_DATA_API_URL = "https://api.football-data.org/v4/competitions/PL/matches"
+TIMEOUT_SECONDS = 12
+
+API_TEAM_MAP = {
+    "Arsenal FC": "Arsenal",
+    "Aston Villa FC": "Aston Villa",
+    "AFC Bournemouth": "Bournemouth",
+    "Brentford FC": "Brentford",
+    "Brighton & Hove Albion FC": "Brighton",
+    "Chelsea FC": "Chelsea",
+    "Crystal Palace FC": "Crystal Palace",
+    "Everton FC": "Everton",
+    "Fulham FC": "Fulham",
+    "Ipswich Town FC": "Ipswich Town",
+    "Leicester City FC": "Leicester City",
+    "Liverpool FC": "Liverpool",
+    "Manchester City FC": "Manchester City",
+    "Manchester United FC": "Manchester United",
+    "Newcastle United FC": "Newcastle United",
+    "Nottingham Forest FC": "Nottingham Forest",
+    "Southampton FC": "Southampton",
+    "Tottenham Hotspur FC": "Tottenham Hotspur",
+    "West Ham United FC": "West Ham United",
+    "Wolverhampton Wanderers FC": "Wolverhampton Wanderers",
+}
+
 # ---------------------------------------------------------------------------
 # Load data & model once at startup
 # ---------------------------------------------------------------------------
@@ -65,6 +101,152 @@ available_feat_cols = [c for c in FEATURE_COLS if c in df.columns]
 TEAMS = sorted(set(df["HomeTeam"].unique()) | set(df["AwayTeam"].unique()))
 
 
+def _normalise_team_name(name: str) -> str:
+    return API_TEAM_MAP.get(name, name)
+
+
+
+
+def _get_today_matches_from_api():
+    api_key = os.environ.get("FOOTBALL_DATA_API_KEY", "")
+    if not api_key:
+        return []
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    params = {"dateFrom": today, "dateTo": today}
+    headers = {"X-Auth-Token": api_key}
+
+    try:
+        resp = requests.get(FOOTBALL_DATA_API_URL, params=params, headers=headers, timeout=TIMEOUT_SECONDS)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        app.logger.warning("Could not fetch today's matches from API: %s", exc)
+        return []
+
+    fixtures = []
+    for item in payload.get("matches", []):
+        raw_home = item.get("homeTeam", {}).get("name", "")
+        raw_away = item.get("awayTeam", {}).get("name", "")
+        home = _normalise_team_name(raw_home)
+        away = _normalise_team_name(raw_away)
+        if home not in TEAMS or away not in TEAMS:
+            continue
+
+        utc_date = item.get("utcDate", "")
+        fixture_date = None
+        try:
+            fixture_date = datetime.fromisoformat(utc_date.replace("Z", "+00:00")).date().isoformat()
+        except Exception:
+            fixture_date = datetime.now(timezone.utc).date().isoformat()
+
+        full_time = item.get("score", {}).get("fullTime", {})
+        home_goals = full_time.get("home")
+        away_goals = full_time.get("away")
+
+        fixtures.append(
+            {
+                "date": fixture_date,
+                "kickoff_utc": utc_date,
+                "status": item.get("status", "SCHEDULED"),
+                "home_team": home,
+                "away_team": away,
+                "home_goals": home_goals,
+                "away_goals": away_goals,
+            }
+        )
+    return fixtures
+
+
+def _compute_team_form_payload(team: str, window: int = 10):
+    team_rows = df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)].sort_values("Date")
+    if team_rows.empty:
+        return None
+
+    recent = team_rows.tail(window).copy()
+    results = []
+    elo_points = []
+    shots_for = []
+    shots_against = []
+    shots_on_target_for = []
+    shots_on_target_against = []
+
+    rolling_points = []
+    cumulative = 0
+
+    for _, row in recent.iterrows():
+        is_home = row["HomeTeam"] == team
+        opponent = row["AwayTeam"] if is_home else row["HomeTeam"]
+        ftr = row.get("FTR", "")
+        if is_home:
+            if ftr == "H":
+                result = "W"
+                points = 3
+            elif ftr == "D":
+                result = "D"
+                points = 1
+            else:
+                result = "L"
+                points = 0
+        else:
+            if ftr == "A":
+                result = "W"
+                points = 3
+            elif ftr == "D":
+                result = "D"
+                points = 1
+            else:
+                result = "L"
+                points = 0
+
+        goals_for = row.get("FTHG") if is_home else row.get("FTAG")
+        goals_against = row.get("FTAG") if is_home else row.get("FTHG")
+        shots_f = row.get("HS") if is_home else row.get("AS")
+        shots_a = row.get("AS") if is_home else row.get("HS")
+        sot_f = row.get("HST") if is_home else row.get("AST")
+        sot_a = row.get("AST") if is_home else row.get("HST")
+        elo_before = row.get("home_elo_before") if is_home else row.get("away_elo_before")
+
+        cumulative += points
+        rolling_points.append(cumulative)
+
+        results.append(
+            {
+                "date": str(row["Date"].date()),
+                "venue": "H" if is_home else "A",
+                "opponent": opponent,
+                "result": result,
+                "points": points,
+                "goals_for": int(goals_for) if pd.notna(goals_for) else None,
+                "goals_against": int(goals_against) if pd.notna(goals_against) else None,
+            }
+        )
+
+        elo_points.append(float(elo_before) if pd.notna(elo_before) else None)
+        shots_for.append(float(shots_f) if pd.notna(shots_f) else None)
+        shots_against.append(float(shots_a) if pd.notna(shots_a) else None)
+        shots_on_target_for.append(float(sot_f) if pd.notna(sot_f) else None)
+        shots_on_target_against.append(float(sot_a) if pd.notna(sot_a) else None)
+
+    def _avg(values):
+        nums = [v for v in values if v is not None and not pd.isna(v)]
+        return round(float(np.mean(nums)), 2) if nums else None
+
+    return {
+        "team": team,
+        "window": window,
+        "last_results": results,
+        "rolling_form_points": rolling_points,
+        "elo_trajectory": elo_points,
+        "shot_stats": {
+            "shots_for_avg": _avg(shots_for),
+            "shots_against_avg": _avg(shots_against),
+            "shots_on_target_for_avg": _avg(shots_on_target_for),
+            "shots_on_target_against_avg": _avg(shots_on_target_against),
+        },
+    }
+
+
 def _reload_data():
     """Reload df and TEAMS from disk after a pipeline refresh."""
     global df, available_feat_cols, TEAMS
@@ -72,6 +254,9 @@ def _reload_data():
     available_feat_cols = [c for c in FEATURE_COLS if c in df.columns]
     TEAMS = sorted(set(df["HomeTeam"].unique()) | set(df["AwayTeam"].unique()))
     app.logger.info("Data reloaded: %d matches, %d teams.", len(df), len(TEAMS))
+
+
+init_tracking_db()
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +371,11 @@ def index():
     return render_template("index.html", teams=TEAMS)
 
 
+@app.route("/team_form")
+def team_form_page():
+    return render_template("team_form.html", teams=TEAMS)
+
+
 @app.route("/teams")
 def teams():
     return jsonify(TEAMS)
@@ -198,6 +388,8 @@ def predict():
     away_team = data.get("away_team", "")
     home_rest = int(data.get("home_rest", 7))
     away_rest = int(data.get("away_rest", 7))
+    client_id = str(data.get("client_id", "")).strip() or "anonymous"
+    fixture_date = str(data.get("fixture_date", "")).strip() or None
 
     if home_team not in TEAMS or away_team not in TEAMS:
         return jsonify({"error": "Invalid team name"}), 400
@@ -234,6 +426,18 @@ def predict():
         "defence_strength":       (_fmt(h_feats.get("defence_str")),          _fmt(a_feats.get("defence_str"))),
     }
 
+    prediction_id = write_prediction(
+        client_id=client_id,
+        home_team=home_team,
+        away_team=away_team,
+        fixture_date=fixture_date,
+        predicted_label=winner,
+        p_home=round(p_home, 4),
+        p_draw=round(p_draw, 4),
+        p_away=round(p_away, 4),
+        confidence=round(conf, 4),
+    )
+
     return jsonify({
         "home_team":   home_team,
         "away_team":   away_team,
@@ -242,6 +446,7 @@ def predict():
         "p_away":      round(p_away, 4),
         "winner":      winner,
         "confidence":  round(conf, 4),
+        "prediction_id": prediction_id,
         "h2h_home_win_rate": round(h2h, 4) if h2h is not None else None,
         "stats":       stats,
     })
@@ -344,6 +549,8 @@ def upcoming():
                 "home_team": home_team,
                 "away_team": away_team,
                 "date":      fix["date"],
+                "home_rest": home_rest,
+                "away_rest": away_rest,
                 "p_home":    round(p_home, 4),
                 "p_draw":    round(p_draw, 4),
                 "p_away":    round(p_away, 4),
@@ -355,6 +562,83 @@ def upcoming():
                                home_team, away_team, exc)
 
     return jsonify({"fixtures": results, "count": len(results)})
+
+
+@app.route("/live_timeline")
+def live_timeline():
+    client_id = request.args.get("client_id", "anonymous").strip() or "anonymous"
+    today_fixtures = _get_today_matches_from_api()
+
+    payload = []
+    for fixture in today_fixtures:
+        latest = latest_prediction_for_fixture(
+            client_id=client_id,
+            home_team=fixture["home_team"],
+            away_team=fixture["away_team"],
+            fixture_date=fixture["date"],
+        )
+
+        actual_label = result_label_from_score(fixture.get("home_goals"), fixture.get("away_goals"))
+
+        if latest and actual_label is not None:
+            resolve_prediction_if_needed(
+                prediction_id=latest["id"],
+                home_goals=fixture.get("home_goals"),
+                away_goals=fixture.get("away_goals"),
+            )
+            latest["actual_label"] = actual_label
+            latest["actual_home_goals"] = fixture.get("home_goals")
+            latest["actual_away_goals"] = fixture.get("away_goals")
+
+        payload.append(
+            {
+                **fixture,
+                "prediction": {
+                    "id": latest["id"],
+                    "winner": latest["predicted_label"],
+                    "confidence": latest["confidence"],
+                    "p_home": latest["p_home"],
+                    "p_draw": latest["p_draw"],
+                    "p_away": latest["p_away"],
+                    "created_at": latest["created_at"],
+                    "is_correct": (latest["predicted_label"] == latest["actual_label"])
+                    if latest.get("actual_label")
+                    else None,
+                }
+                if latest
+                else None,
+                "actual_label": actual_label,
+            }
+        )
+
+    return jsonify({"date": datetime.now(timezone.utc).date().isoformat(), "fixtures": payload})
+
+
+@app.route("/prediction_accuracy")
+def prediction_accuracy():
+    client_id = request.args.get("client_id", "anonymous").strip() or "anonymous"
+    return jsonify(get_prediction_accuracy(client_id))
+
+
+@app.route("/accuracy_dashboard")
+def accuracy_dashboard():
+    client_id = request.args.get("client_id", "anonymous").strip() or "anonymous"
+    return jsonify(get_accuracy_dashboard(client_id))
+
+
+@app.route("/team_form_data")
+def team_form_data():
+    team = request.args.get("team", "")
+    window = int(request.args.get("window", 10))
+    window = 5 if window <= 5 else 10
+
+    if team not in TEAMS:
+        return jsonify({"error": "Invalid team"}), 400
+
+    payload = _compute_team_form_payload(team=team, window=window)
+    if payload is None:
+        return jsonify({"error": "No data available"}), 404
+    return jsonify(payload)
 
 
 # ---------------------------------------------------------------------------

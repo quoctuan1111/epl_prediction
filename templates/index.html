@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EPL Match Predictor</title>
+  <title> EPL Match Predictor</title>
   <meta name="description" content="Predict English Premier League match outcomes using machine learning. Get Win/Draw/Loss probabilities powered by an advanced WDL model." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="icon" type="image/png" href="logo/EPLPRE.png">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -416,6 +417,113 @@
       padding: 24px;
       font-size: 14px;
     }
+
+    .quick-links {
+      display: flex;
+      justify-content: center;
+      margin-top: 14px;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .quick-link {
+      font-size: 13px;
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid rgba(56,189,248,0.3);
+      background: rgba(56,189,248,0.1);
+      border-radius: 9px;
+      padding: 7px 12px;
+    }
+
+    .timeline-list, .accuracy-cards {
+      display: grid;
+      gap: 12px;
+    }
+
+    .timeline-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .timeline-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .timeline-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .timeline-correct { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+    .timeline-wrong { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+    .timeline-pending { background: rgba(250,204,21,0.12); color: #facc15; border: 1px solid rgba(250,204,21,0.3); }
+
+    .accuracy-cards {
+      grid-template-columns: repeat(4, 1fr);
+    }
+    @media (max-width: 780px) {
+      .accuracy-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .accuracy-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+    .accuracy-card .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .accuracy-card .value { font-size: 22px; font-weight: 800; }
+
+    .accuracy-panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-top: 12px;
+    }
+
+    .history-chart {
+      width: 100%;
+      height: 220px;
+      background: rgba(17,24,39,0.45);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .recent-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 12px;
+    }
+    .recent-table th, .recent-table td {
+      border-top: 1px solid var(--border);
+      padding: 8px 6px;
+      text-align: left;
+    }
+    .recent-table th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+
+    .btn-mini {
+      margin-top: 8px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(56,189,248,0.3);
+      color: var(--accent);
+      background: rgba(56,189,248,0.1);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -424,6 +532,9 @@
   <div class="badge">Machine Learning</div>
   <h1>EPL Match Predictor</h1>
   <p>Pick any two Premier League teams and get instant Win / Draw / Loss probabilities powered by an ensemble WDL model.</p>
+  <div class="quick-links">
+    <a href="/team_form" class="quick-link">Open Team Form Page</a>
+  </div>
 </header>
 
 <main>
@@ -536,6 +647,41 @@
     <div class="upcoming-loading">Loading upcoming fixtures…</div>
   </div>
 
+  <div class="section-divider">
+    <h2>Match Timeline / Live Tracking</h2>
+    <hr />
+  </div>
+  <div id="timeline-list" class="timeline-list">
+    <div class="upcoming-loading">Loading live timeline…</div>
+  </div>
+
+  <div class="section-divider">
+    <h2>Historical Accuracy Dashboard</h2>
+    <hr />
+  </div>
+
+  <div class="accuracy-cards">
+    <div class="accuracy-card"><div class="label">Total Predictions</div><div class="value" id="acc-total">0</div></div>
+    <div class="accuracy-card"><div class="label">Completed</div><div class="value" id="acc-completed">0</div></div>
+    <div class="accuracy-card"><div class="label">Correct</div><div class="value" id="acc-correct">0</div></div>
+    <div class="accuracy-card"><div class="label">Accuracy</div><div class="value" id="acc-pct">-</div></div>
+  </div>
+
+  <div class="accuracy-panel">
+    <canvas id="accuracy-history-chart" class="history-chart" width="760" height="220"></canvas>
+    <table class="recent-table">
+      <thead>
+        <tr>
+          <th>Created</th>
+          <th>Fixture</th>
+          <th>Predicted</th>
+          <th>Actual</th>
+        </tr>
+      </thead>
+      <tbody id="recent-predictions-body"></tbody>
+    </table>
+  </div>
+
 </main>
 
 <footer>
@@ -543,6 +689,9 @@
 </footer>
 
 <script>
+  const CLIENT_ID_KEY = "epl_predictor_client_id";
+  const clientId = getOrCreateClientId();
+
   const STAT_LABELS = {
     avg_goals_scored:    "Avg Goals Scored",
     avg_goals_conceded:  "Avg Goals Conceded",
@@ -560,14 +709,23 @@
   // Lower is better for defence
   const LOWER_BETTER = new Set(["avg_goals_conceded", "defence_strength"]);
 
-  async function predict() {
+  function getOrCreateClientId() {
+    const existing = localStorage.getItem(CLIENT_ID_KEY);
+    if (existing) return existing;
+    const generated = `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(CLIENT_ID_KEY, generated);
+    return generated;
+  }
+
+  async function predict(override = null) {
     const btn      = document.getElementById("predict-btn");
     const errBox   = document.getElementById("error-box");
     const resCard  = document.getElementById("result-card");
-    const homeTeam = document.getElementById("home-team").value;
-    const awayTeam = document.getElementById("away-team").value;
-    const homeRest = document.getElementById("home-rest").value;
-    const awayRest = document.getElementById("away-rest").value;
+    const homeTeam = override?.home_team || document.getElementById("home-team").value;
+    const awayTeam = override?.away_team || document.getElementById("away-team").value;
+    const homeRest = override?.home_rest ?? document.getElementById("home-rest").value;
+    const awayRest = override?.away_rest ?? document.getElementById("away-rest").value;
+    const fixtureDate = override?.fixture_date || null;
 
     errBox.style.display  = "none";
     resCard.style.display = "none";
@@ -586,13 +744,17 @@
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ home_team: homeTeam, away_team: awayTeam,
-                                  home_rest: homeRest, away_rest: awayRest })
+                                  home_rest: homeRest, away_rest: awayRest,
+                                  fixture_date: fixtureDate,
+                                  client_id: clientId })
       });
       const data = await res.json();
 
       if (!res.ok) { throw new Error(data.error || "Prediction failed"); }
 
       renderResult(data);
+      await loadLiveTimeline();
+      await loadAccuracyDashboard();
     } catch (e) {
       errBox.textContent = e.message;
       errBox.style.display = "block";
@@ -723,6 +885,13 @@
       <div class="fix-team right">
         <div class="fix-team-name">${f.away_team}</div>
         <div class="fix-prob fix-prob-away">Away win <span>${pAway}%</span></div>
+        <button class="btn-mini" onclick='predictFixture(${JSON.stringify({
+          home_team: f.home_team,
+          away_team: f.away_team,
+          home_rest: f.home_rest ?? 7,
+          away_rest: f.away_rest ?? 7,
+          fixture_date: f.date || null
+        }).replace(/'/g, "&#39;")})'>Save Prediction</button>
       </div>
 
       <div class="fix-bar-row">
@@ -732,6 +901,149 @@
       </div>
     `;
     return div;
+  }
+
+  function predictFixture(payload) {
+    predict(payload);
+  }
+
+  function drawAccuracyHistory(history) {
+    const canvas = document.getElementById("accuracy-history-chart");
+    const ctx = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+    ctx.clearRect(0, 0, width, height);
+
+    if (!history || history.length === 0) {
+      ctx.fillStyle = "#64748b";
+      ctx.font = "13px Inter";
+      ctx.fillText("No accuracy history yet", 16, 24);
+      return;
+    }
+
+    const points = history
+      .map(item => item.accuracy_pct)
+      .filter(v => v !== null && !Number.isNaN(v));
+    if (points.length === 0) {
+      ctx.fillStyle = "#64748b";
+      ctx.font = "13px Inter";
+      ctx.fillText("No completed predictions yet", 16, 24);
+      return;
+    }
+
+    const min = 0;
+    const max = 100;
+    const pad = 28;
+    const stepX = points.length > 1 ? (width - pad * 2) / (points.length - 1) : 0;
+
+    ctx.strokeStyle = "#2a3a55";
+    for (let i = 0; i <= 4; i++) {
+      const y = pad + i * ((height - pad * 2) / 4);
+      ctx.beginPath();
+      ctx.moveTo(pad, y);
+      ctx.lineTo(width - pad, y);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    points.forEach((p, idx) => {
+      const x = pad + idx * stepX;
+      const y = height - pad - ((p - min) / (max - min)) * (height - pad * 2);
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  async function loadLiveTimeline() {
+    const container = document.getElementById("timeline-list");
+    try {
+      const res = await fetch(`/live_timeline?client_id=${encodeURIComponent(clientId)}`);
+      const data = await res.json();
+      const fixtures = data.fixtures || [];
+
+      if (fixtures.length === 0) {
+        container.innerHTML = '<div class="upcoming-empty">No live fixtures found for today.<br><small>Add a football-data.org API key to enable live score polling.</small></div>';
+        return;
+      }
+
+      container.innerHTML = "";
+      fixtures.forEach(f => {
+        const row = document.createElement("div");
+        row.className = "timeline-item";
+
+        let badgeText = "No prediction";
+        let badgeClass = "timeline-pending";
+
+        if (f.prediction && f.prediction.is_correct === true) {
+          badgeText = "Correct";
+          badgeClass = "timeline-correct";
+        } else if (f.prediction && f.prediction.is_correct === false) {
+          badgeText = "Wrong";
+          badgeClass = "timeline-wrong";
+        } else if (f.prediction) {
+          badgeText = "Pending";
+          badgeClass = "timeline-pending";
+        }
+
+        const scoreText = (f.home_goals !== null && f.away_goals !== null)
+          ? `${f.home_goals}-${f.away_goals}`
+          : "-";
+
+        const predText = f.prediction
+          ? `Pred: ${f.prediction.winner} (${(f.prediction.confidence * 100).toFixed(1)}%)`
+          : "Pred: none";
+
+        row.innerHTML = `
+          <div>
+            <div><strong>${f.home_team}</strong> vs <strong>${f.away_team}</strong> · ${scoreText}</div>
+            <div class="timeline-meta">Status: ${f.status} · ${predText}</div>
+          </div>
+          <span class="timeline-badge ${badgeClass}">${badgeText}</span>
+        `;
+        container.appendChild(row);
+      });
+    } catch (e) {
+      container.innerHTML = `<div class="upcoming-empty">Could not load live timeline: ${e.message}</div>`;
+    }
+  }
+
+  async function loadAccuracyDashboard() {
+    try {
+      const res = await fetch(`/accuracy_dashboard?client_id=${encodeURIComponent(clientId)}`);
+      const data = await res.json();
+
+      document.getElementById("acc-total").textContent = data.summary.total_predictions ?? 0;
+      document.getElementById("acc-completed").textContent = data.summary.completed ?? 0;
+      document.getElementById("acc-correct").textContent = data.summary.correct ?? 0;
+      document.getElementById("acc-pct").textContent = data.summary.accuracy_pct !== null && data.summary.accuracy_pct !== undefined
+        ? `${data.summary.accuracy_pct}%`
+        : "-";
+
+      drawAccuracyHistory(data.history || []);
+
+      const tbody = document.getElementById("recent-predictions-body");
+      tbody.innerHTML = "";
+      (data.recent || []).slice(0, 12).forEach(item => {
+        const tr = document.createElement("tr");
+        const created = item.created_at ? new Date(item.created_at).toLocaleString("en-GB") : "-";
+        const fixture = `${item.home_team} vs ${item.away_team}`;
+        const actual = item.actual_label
+          ? `${item.actual_label} (${item.actual_home_goals}-${item.actual_away_goals})`
+          : "Pending";
+        tr.innerHTML = `
+          <td>${created}</td>
+          <td>${fixture}</td>
+          <td>${item.predicted_label}</td>
+          <td>${actual}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (_) {
+      // keep dashboard silent on transient errors
+    }
   }
 
   async function pollRefreshStatus() {
@@ -822,6 +1134,13 @@
   // Load on page start
   loadLastRefresh();
   loadUpcoming();
+  loadLiveTimeline();
+  loadAccuracyDashboard();
+
+  setInterval(() => {
+    loadLiveTimeline();
+    loadAccuracyDashboard();
+  }, 30000);
 </script>
 </body>
 </html>

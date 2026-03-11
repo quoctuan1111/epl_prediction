@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Form · EPL Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0e1a;
+      --surface: #111827;
+      --card: #1a2235;
+      --border: #2a3a55;
+      --accent: #38bdf8;
+      --green: #22c55e;
+      --yellow: #facc15;
+      --red: #f87171;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --radius: 14px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 32px 18px 50px;
+    }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      font-size: clamp(24px, 4vw, 34px);
+      font-weight: 800;
+    }
+
+    .back-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 13px;
+      border: 1px solid rgba(56,189,248,0.25);
+      border-radius: 9px;
+      padding: 7px 12px;
+      background: rgba(56,189,248,0.1);
+    }
+
+    .controls {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 700px) {
+      .controls { grid-template-columns: 1fr; }
+    }
+
+    .controls select, .controls button {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .controls button {
+      cursor: pointer;
+      font-weight: 700;
+      background: linear-gradient(135deg, #0ea5e9, #6366f1);
+      border: none;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 800px) {
+      .summary { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .metric {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .metric .value {
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    @media (max-width: 880px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .card h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+      letter-spacing: 0.8px;
+    }
+
+    .results-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      list-style: none;
+    }
+
+    .result-pill {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+    }
+
+    .result-W { background: rgba(34,197,94,0.15); color: var(--green); border-color: rgba(34,197,94,0.4); }
+    .result-D { background: rgba(250,204,21,0.14); color: var(--yellow); border-color: rgba(250,204,21,0.4); }
+    .result-L { background: rgba(248,113,113,0.15); color: var(--red); border-color: rgba(248,113,113,0.4); }
+
+    canvas {
+      width: 100%;
+      height: 220px;
+      background: rgba(17,24,39,0.45);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 18px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <h1>Team Form</h1>
+      <a class="back-link" href="/">← Back to Predictor</a>
+    </div>
+
+    <div class="controls">
+      <select id="team-select">
+        {% for team in teams %}
+        <option value="{{ team }}">{{ team }}</option>
+        {% endfor %}
+      </select>
+      <select id="window-select">
+        <option value="5">Last 5</option>
+        <option value="10" selected>Last 10</option>
+      </select>
+      <button onclick="loadTeamForm()">Load Form</button>
+    </div>
+
+    <div class="summary">
+      <div class="metric"><div class="label">Shots For Avg</div><div id="shots-for" class="value">-</div></div>
+      <div class="metric"><div class="label">Shots Against Avg</div><div id="shots-against" class="value">-</div></div>
+      <div class="metric"><div class="label">SOT For Avg</div><div id="sot-for" class="value">-</div></div>
+      <div class="metric"><div class="label">SOT Against Avg</div><div id="sot-against" class="value">-</div></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Recent Results</h2>
+        <ul id="results-list" class="results-list"></ul>
+      </div>
+      <div class="card">
+        <h2>Rolling Form Points</h2>
+        <canvas id="form-chart" width="430" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h2>Elo Trajectory</h2>
+        <canvas id="elo-chart" width="430" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h2>Shot Profile</h2>
+        <canvas id="shots-chart" width="430" height="220"></canvas>
+      </div>
+    </div>
+
+    <div id="error" class="empty" style="display:none;"></div>
+  </div>
+
+  <script>
+    function drawLineChart(canvasId, points, lineColor) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      if (!points || points.length === 0) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '13px Inter';
+        ctx.fillText('No data', 14, 24);
+        return;
+      }
+
+      const nums = points.filter(v => v !== null && !Number.isNaN(v));
+      if (nums.length === 0) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '13px Inter';
+        ctx.fillText('No data', 14, 24);
+        return;
+      }
+
+      const min = Math.min(...nums);
+      const max = Math.max(...nums);
+      const span = Math.max(1, max - min);
+      const padding = 26;
+      const stepX = points.length > 1 ? (width - padding * 2) / (points.length - 1) : 0;
+
+      ctx.strokeStyle = '#2a3a55';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        const y = padding + (i * (height - padding * 2)) / 3;
+        ctx.beginPath();
+        ctx.moveTo(padding, y);
+        ctx.lineTo(width - padding, y);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      points.forEach((p, i) => {
+        if (p === null || Number.isNaN(p)) return;
+        const x = padding + i * stepX;
+        const y = height - padding - ((p - min) / span) * (height - padding * 2);
+        if (i === 0 || points[i - 1] === null) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    function drawBarChart(canvasId, labels, values, colors) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+
+      const max = Math.max(...values, 1);
+      const padding = 28;
+      const barWidth = 42;
+      const gap = 34;
+
+      values.forEach((v, i) => {
+        const x = padding + i * (barWidth + gap);
+        const h = (v / max) * (height - padding * 2);
+        const y = height - padding - h;
+        ctx.fillStyle = colors[i];
+        ctx.fillRect(x, y, barWidth, h);
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = '12px Inter';
+        ctx.fillText(String(v.toFixed(2)), x - 2, y - 6);
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '11px Inter';
+        ctx.fillText(labels[i], x - 2, height - 10);
+      });
+    }
+
+    function renderResults(results) {
+      const list = document.getElementById('results-list');
+      list.innerHTML = '';
+      if (!results || results.length === 0) {
+        list.innerHTML = '<li class="empty">No recent results</li>';
+        return;
+      }
+      results.forEach(item => {
+        const li = document.createElement('li');
+        li.className = `result-pill result-${item.result}`;
+        li.textContent = `${item.result} ${item.venue} vs ${item.opponent} (${item.goals_for}-${item.goals_against})`;
+        list.appendChild(li);
+      });
+    }
+
+    async function loadTeamForm() {
+      const team = document.getElementById('team-select').value;
+      const windowValue = document.getElementById('window-select').value;
+      const errorEl = document.getElementById('error');
+      errorEl.style.display = 'none';
+
+      try {
+        const res = await fetch(`/team_form_data?team=${encodeURIComponent(team)}&window=${windowValue}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load team form');
+
+        renderResults(data.last_results);
+        drawLineChart('form-chart', data.rolling_form_points, '#22c55e');
+        drawLineChart('elo-chart', data.elo_trajectory, '#38bdf8');
+        drawBarChart(
+          'shots-chart',
+          ['Shots F', 'Shots A', 'SOT F', 'SOT A'],
+          [
+            data.shot_stats.shots_for_avg || 0,
+            data.shot_stats.shots_against_avg || 0,
+            data.shot_stats.shots_on_target_for_avg || 0,
+            data.shot_stats.shots_on_target_against_avg || 0,
+          ],
+          ['#22c55e', '#f87171', '#38bdf8', '#facc15']
+        );
+
+        document.getElementById('shots-for').textContent = data.shot_stats.shots_for_avg ?? '-';
+        document.getElementById('shots-against').textContent = data.shot_stats.shots_against_avg ?? '-';
+        document.getElementById('sot-for').textContent = data.shot_stats.shots_on_target_for_avg ?? '-';
+        document.getElementById('sot-against').textContent = data.shot_stats.shots_on_target_against_avg ?? '-';
+      } catch (e) {
+        errorEl.textContent = e.message;
+        errorEl.style.display = 'block';
+      }
+    }
+
+    loadTeamForm();
+  </script>
+</body>
+</html>
