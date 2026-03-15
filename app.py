@@ -99,6 +99,7 @@ model = joblib.load(MODEL_PATH)
 
 available_feat_cols = [c for c in FEATURE_COLS if c in df.columns]
 TEAMS = sorted(set(df["HomeTeam"].unique()) | set(df["AwayTeam"].unique()))
+_feature_means = df[available_feat_cols].mean().to_dict()
 
 
 def _normalise_team_name(name: str) -> str:
@@ -249,10 +250,11 @@ def _compute_team_form_payload(team: str, window: int = 10):
 
 def _reload_data():
     """Reload df and TEAMS from disk after a pipeline refresh."""
-    global df, available_feat_cols, TEAMS
+    global df, available_feat_cols, TEAMS, _feature_means
     df = pd.read_csv(FEATURED_DATA, parse_dates=["Date"])
     available_feat_cols = [c for c in FEATURE_COLS if c in df.columns]
     TEAMS = sorted(set(df["HomeTeam"].unique()) | set(df["AwayTeam"].unique()))
+    _feature_means = df[available_feat_cols].mean().to_dict()
     app.logger.info("Data reloaded: %d matches, %d teams.", len(df), len(TEAMS))
 
 
@@ -350,8 +352,13 @@ def build_feature_vector(h: dict, a: dict, home_team: str, away_team: str,
         "h2h_home_win_rate":            h2h if h2h is not None else np.nan,
     }
 
-    row = [lookup.get(col, np.nan) for col in available_feat_cols]
-    return np.array([row])
+    row = np.array([lookup.get(col, np.nan) for col in available_feat_cols], dtype=float)
+    # Impute NaN with training-data column means so the model never sees NaN
+    nan_mask = np.isnan(row)
+    if nan_mask.any():
+        means = np.array([_feature_means.get(col, 0.0) for col in available_feat_cols])
+        row[nan_mask] = means[nan_mask]
+    return row.reshape(1, -1)
 
 
 # ---------------------------------------------------------------------------
