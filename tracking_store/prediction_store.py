@@ -46,9 +46,55 @@ def init_tracking_db():
             "CREATE INDEX IF NOT EXISTS idx_predictions_fixture "
             "ON predictions(home_team, away_team, fixture_date)"
         )
+
+        cols = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(predictions)").fetchall()
+        }
+        if "source_client_id" not in cols:
+            conn.execute("ALTER TABLE predictions ADD COLUMN source_client_id TEXT")
+        if "request_ip" not in cols:
+            conn.execute("ALTER TABLE predictions ADD COLUMN request_ip TEXT")
+        if "user_agent" not in cols:
+            conn.execute("ALTER TABLE predictions ADD COLUMN user_agent TEXT")
+
+        conn.execute(
+            """
+            UPDATE predictions
+            SET client_id = 'anonymous'
+            WHERE client_id IS NULL OR TRIM(client_id) = ''
+            """
+        )
+
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_predictions_request_ip "
+            "ON predictions(request_ip, created_at)"
+        )
+        conn.execute(
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_predictions_client_id_required
+            BEFORE INSERT ON predictions
+            FOR EACH ROW
+            WHEN NEW.client_id IS NULL OR TRIM(NEW.client_id) = ''
+            BEGIN
+                SELECT RAISE(ABORT, 'client_id is required');
+            END;
+            """
+        )
         conn.commit()
     finally:
         conn.close()
+
+
+def normalize_client_id(client_id, fallback: str = "anonymous") -> str:
+    if client_id is None:
+        return fallback
+    value = str(client_id).strip()
+    if not value:
+        return fallback
+    if value.lower() in {"none", "null", "undefined", "nan"}:
+        return fallback
+    return value[:128]
 
 
 def result_label_from_score(home_goals, away_goals):
@@ -71,10 +117,17 @@ def write_prediction(
     p_draw: float,
     p_away: float,
     confidence: float,
+    source_client_id: str = None,
+    request_ip: str = None,
+    user_agent: str = None,
 ):
     prediction_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
     fixture_date_value = fixture_date if fixture_date else None
+    normalized_client_id = normalize_client_id(client_id)
+    normalized_source_client_id = normalize_client_id(source_client_id, fallback="") or None
+    normalized_request_ip = (str(request_ip).strip() if request_ip is not None else "")[:64] or None
+    normalized_user_agent = (str(user_agent).strip() if user_agent is not None else "")[:512] or None
 
     conn = _db_connect()
     try:
@@ -82,12 +135,13 @@ def write_prediction(
             """
             INSERT INTO predictions (
                 id, client_id, created_at, fixture_date, home_team, away_team,
-                predicted_label, p_home, p_draw, p_away, confidence
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                predicted_label, p_home, p_draw, p_away, confidence,
+                source_client_id, request_ip, user_agent
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 prediction_id,
-                client_id,
+                normalized_client_id,
                 created_at,
                 fixture_date_value,
                 home_team,
@@ -97,6 +151,9 @@ def write_prediction(
                 p_draw,
                 p_away,
                 confidence,
+                normalized_source_client_id,
+                normalized_request_ip,
+                normalized_user_agent,
             ),
         )
         conn.commit()

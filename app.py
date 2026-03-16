@@ -31,6 +31,7 @@ from tracking_store.prediction_store import (
     get_prediction_accuracy,
     init_tracking_db,
     latest_prediction_for_fixture,
+    normalize_client_id,
     resolve_prediction_if_needed,
     result_label_from_score,
     write_prediction,
@@ -104,6 +105,13 @@ _feature_means = df[available_feat_cols].mean().to_dict()
 
 def _normalise_team_name(name: str) -> str:
     return API_TEAM_MAP.get(name, name)
+
+
+def _request_ip() -> str:
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return (request.remote_addr or "").strip()
 
 
 
@@ -390,12 +398,13 @@ def teams():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data      = request.get_json()
+    data = request.get_json(silent=True) or {}
     home_team = data.get("home_team", "")
     away_team = data.get("away_team", "")
     home_rest = int(data.get("home_rest", 7))
     away_rest = int(data.get("away_rest", 7))
-    client_id = str(data.get("client_id", "")).strip() or "anonymous"
+    source_client_id = data.get("client_id", "")
+    client_id = normalize_client_id(source_client_id)
     fixture_date = str(data.get("fixture_date", "")).strip() or None
 
     if home_team not in TEAMS or away_team not in TEAMS:
@@ -433,6 +442,9 @@ def predict():
         "defence_strength":       (_fmt(h_feats.get("defence_str")),          _fmt(a_feats.get("defence_str"))),
     }
 
+    request_ip = _request_ip()
+    normalized_source_client_id = normalize_client_id(source_client_id)
+
     prediction_id = write_prediction(
         client_id=client_id,
         home_team=home_team,
@@ -443,6 +455,19 @@ def predict():
         p_draw=round(p_draw, 4),
         p_away=round(p_away, 4),
         confidence=round(conf, 4),
+        source_client_id=source_client_id,
+        request_ip=request_ip,
+        user_agent=request.headers.get("User-Agent", ""),
+    )
+
+    app.logger.info(
+        "Prediction saved id=%s client_id=%s source_client_id=%s ip=%s fixture=%s vs %s",
+        prediction_id,
+        client_id,
+        normalized_source_client_id,
+        request_ip,
+        home_team,
+        away_team,
     )
 
     return jsonify({
@@ -454,6 +479,7 @@ def predict():
         "winner":      winner,
         "confidence":  round(conf, 4),
         "prediction_id": prediction_id,
+        "client_id": client_id,
         "h2h_home_win_rate": round(h2h, 4) if h2h is not None else None,
         "stats":       stats,
     })
@@ -573,7 +599,7 @@ def upcoming():
 
 @app.route("/live_timeline")
 def live_timeline():
-    client_id = request.args.get("client_id", "anonymous").strip() or "anonymous"
+    client_id = normalize_client_id(request.args.get("client_id", ""))
     today_fixtures = _get_today_matches_from_api()
 
     payload = []
@@ -623,13 +649,13 @@ def live_timeline():
 
 @app.route("/prediction_accuracy")
 def prediction_accuracy():
-    client_id = request.args.get("client_id", "anonymous").strip() or "anonymous"
+    client_id = normalize_client_id(request.args.get("client_id", ""))
     return jsonify(get_prediction_accuracy(client_id))
 
 
 @app.route("/accuracy_dashboard")
 def accuracy_dashboard():
-    client_id = request.args.get("client_id", "anonymous").strip() or "anonymous"
+    client_id = normalize_client_id(request.args.get("client_id", ""))
     return jsonify(get_accuracy_dashboard(client_id))
 
 
