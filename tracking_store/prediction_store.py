@@ -237,6 +237,57 @@ def get_prediction_accuracy(client_id: str):
     return {"client_id": client_id, "completed": completed, "correct": correct, "accuracy_pct": accuracy}
 
 
+def get_admin_predictions(
+    client_id: str = None,
+    request_ip: str = None,
+    limit: int = 100,
+    offset: int = 0,
+):
+    """Return raw prediction rows with full attribution data for admin use."""
+    conditions = []
+    params = []
+
+    if client_id:
+        conditions.append("client_id = ?")
+        params.append(client_id)
+    if request_ip:
+        conditions.append("request_ip = ?")
+        params.append(request_ip)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+
+    conn = _db_connect()
+    try:
+        total_row = conn.execute(
+            f"SELECT COUNT(*) FROM predictions {where}", params
+        ).fetchone()
+        rows = conn.execute(
+            f"""
+            SELECT
+                id, client_id, source_client_id, request_ip, user_agent,
+                created_at, fixture_date, home_team, away_team,
+                predicted_label, p_home, p_draw, p_away, confidence,
+                actual_label, actual_home_goals, actual_away_goals, resolved_at
+            FROM predictions
+            {where}
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return {
+        "total": int(total_row[0]),
+        "limit": limit,
+        "offset": offset,
+        "rows": [dict(r) for r in rows],
+    }
+
+
 def get_accuracy_dashboard(client_id: str):
     conn = _db_connect()
     try:

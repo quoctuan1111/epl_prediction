@@ -28,6 +28,7 @@ import requests
 from flask import Flask, jsonify, render_template, request
 from tracking_store.prediction_store import (
     get_accuracy_dashboard,
+    get_admin_predictions,
     get_prediction_accuracy,
     init_tracking_db,
     latest_prediction_for_fixture,
@@ -657,6 +658,36 @@ def prediction_accuracy():
 def accuracy_dashboard():
     client_id = normalize_client_id(request.args.get("client_id", ""))
     return jsonify(get_accuracy_dashboard(client_id))
+
+
+@app.route("/admin/predictions")
+def admin_predictions():
+    """
+    Admin endpoint to inspect prediction rows with full attribution.
+
+    Query params:
+      client_id  — filter by client ID
+      ip         — filter by request IP
+      limit      — rows per page (max 500, default 100)
+      offset     — pagination offset (default 0)
+      secret     — must match env ADMIN_SECRET if set
+    """
+    secret_env = os.environ.get("ADMIN_SECRET", "")
+    if secret_env and request.args.get("secret", "") != secret_env:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    client_id  = normalize_client_id(request.args.get("client_id", ""), fallback="")
+    request_ip = request.args.get("ip", "").strip()
+    limit      = request.args.get("limit", 100)
+    offset     = request.args.get("offset", 0)
+
+    result = get_admin_predictions(
+        client_id=client_id or None,
+        request_ip=request_ip or None,
+        limit=int(limit),
+        offset=int(offset),
+    )
+    return jsonify(result)
 
 
 @app.route("/team_form_data")
