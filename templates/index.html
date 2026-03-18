@@ -41,7 +41,48 @@
       text-align: center;
       padding: 52px 24px 36px;
       background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(56,189,248,0.15), transparent);
+      position: relative;
     }
+
+    .user-menu {
+      position: absolute;
+      top: 16px;
+      right: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .user-nickname {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .btn-logout {
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(248,113,113,0.1);
+      color: #f87171;
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-logout:hover {
+      background: rgba(248,113,113,0.2);
+    }
+
     header .badge {
       display: inline-block;
       font-size: 11px;
@@ -529,6 +570,14 @@
 <body>
 
 <header>
+  <div class="user-menu">
+    <div class="user-info">
+      <span>👤</span>
+      <span class="user-nickname" id="user-nickname">Loading...</span>
+    </div>
+    <a href="/logout" class="btn-logout">Logout</a>
+  </div>
+
   <div class="badge">Machine Learning</div>
   <h1>EPL Match Predictor</h1>
   <p>Pick any two Premier League teams and get instant Win / Draw / Loss probabilities powered by an ensemble WDL model.</p>
@@ -691,6 +740,25 @@
 <script>
   const CLIENT_ID_KEY = "epl_predictor_client_id";
   const clientId = getOrCreateClientId();
+
+  // Load and display user info
+  async function loadUserInfo() {
+    try {
+      const response = await fetch('/api/user');
+      if (response.ok) {
+        const user = await response.json();
+        document.getElementById('user-nickname').textContent = user.nickname;
+      } else {
+        // Not logged in, redirect to login
+        window.location.href = '/login';
+      }
+    } catch (error) {
+      console.error('Failed to load user info:', error);
+    }
+  }
+
+  // Load user info on page load
+  loadUserInfo();
 
   const STAT_LABELS = {
     avg_goals_scored:    "Avg Goals Scored",
