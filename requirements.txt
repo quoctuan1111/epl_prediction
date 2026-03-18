@@ -1,4 +1,5 @@
 flask
+flask-session
 gunicorn
 pandas
 numpy
@@ -9,3 +10,4 @@ joblib
 scipy
 requests
 python-dotenv
+werkzeug
