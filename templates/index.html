@@ -1028,7 +1028,7 @@
   async function loadLiveTimeline() {
     const container = document.getElementById("timeline-list");
     try {
-      const res = await fetch(`/live_timeline?client_id=${encodeURIComponent(clientId)}`);
+      const res = await fetch(`/live_timeline`);
       const data = await res.json();
       const fixtures = data.fixtures || [];
 
@@ -1080,7 +1080,7 @@
 
   async function loadAccuracyDashboard() {
     try {
-      const res = await fetch(`/accuracy_dashboard?client_id=${encodeURIComponent(clientId)}`);
+      const res = await fetch(`/accuracy_dashboard`);
       const data = await res.json();
 
       document.getElementById("acc-total").textContent = data.summary.total_predictions ?? 0;

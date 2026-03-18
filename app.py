@@ -743,7 +743,9 @@ def upcoming():
 
 @app.route("/live_timeline")
 def live_timeline():
-    client_id = normalize_client_id(request.args.get("client_id", ""))
+    # Use user_id if logged in, otherwise use client_id from request
+    user_id = session.get('user_id')
+    client_id = user_id if user_id else normalize_client_id(request.args.get("client_id", ""))
     today_fixtures = _get_today_matches_from_api()
 
     payload = []
@@ -793,13 +795,17 @@ def live_timeline():
 
 @app.route("/prediction_accuracy")
 def prediction_accuracy():
-    client_id = normalize_client_id(request.args.get("client_id", ""))
+    # Use user_id if logged in, otherwise use client_id from request
+    user_id = session.get('user_id')
+    client_id = user_id if user_id else normalize_client_id(request.args.get("client_id", ""))
     return jsonify(get_prediction_accuracy(client_id))
 
 
 @app.route("/accuracy_dashboard")
 def accuracy_dashboard():
-    client_id = normalize_client_id(request.args.get("client_id", ""))
+    # Use user_id if logged in, otherwise use client_id from request
+    user_id = session.get('user_id')
+    client_id = user_id if user_id else normalize_client_id(request.args.get("client_id", ""))
     return jsonify(get_accuracy_dashboard(client_id))
 
 
