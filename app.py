@@ -439,10 +439,10 @@ def login_page():
         return render_template("login.html")
     
     data = request.get_json(silent=True) or {}
-    nickname = data.get("nickname", "").strip()
+    email = data.get("email", "").strip()
     password = data.get("password", "").strip()
     
-    result = login_user(nickname, password)
+    result = login_user(email, password)
     
     if result["success"]:
         session['user_id'] = result['user_id']

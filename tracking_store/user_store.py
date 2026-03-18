@@ -138,31 +138,31 @@ def register_user(nickname: str, email: str, password: str) -> dict:
         conn.close()
 
 
-def login_user(nickname: str, password: str) -> dict:
+def login_user(email: str, password: str) -> dict:
     """
-    Authenticate a user by nickname and password.
+    Authenticate a user by email and password.
     
     Returns:
         dict with keys: success (bool), user_id (str), nickname (str), email (str), error (str)
     """
-    nickname = (nickname or "").strip()
+    email = (email or "").strip()
     password = (password or "").strip()
     
-    if not nickname or not password:
-        return {"success": False, "error": "Nickname and password are required"}
+    if not email or not password:
+        return {"success": False, "error": "Email and password are required"}
     
     conn = _db_connect()
     try:
         user = conn.execute(
-            "SELECT id, nickname, email, password_hash FROM users WHERE LOWER(nickname) = LOWER(?)",
-            (nickname,)
+            "SELECT id, nickname, email, password_hash FROM users WHERE LOWER(email) = LOWER(?)",
+            (email,)
         ).fetchone()
         
         if not user:
-            return {"success": False, "error": "Invalid nickname or password"}
+            return {"success": False, "error": "Invalid email or password"}
         
         if not check_password_hash(user["password_hash"], password):
-            return {"success": False, "error": "Invalid nickname or password"}
+            return {"success": False, "error": "Invalid email or password"}
         
         return {
             "success": True,

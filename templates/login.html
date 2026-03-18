@@ -227,12 +227,12 @@
 
       <form id="loginForm">
         <div class="form-group">
-          <label for="nickname">Nickname</label>
+          <label for="email">Email</label>
           <input 
-            type="text" 
-            id="nickname" 
-            name="nickname"
-            placeholder="Enter your nickname"
+            type="email" 
+            id="email" 
+            name="email"
+            placeholder="your@email.com"
             required
           />
         </div>
@@ -277,10 +277,10 @@
       errorBox.textContent = '';
       successBox.classList.remove('show');
       
-      const nickname = document.getElementById('nickname').value.trim();
+      const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
 
-      if (!nickname || !password) {
+      if (!email || !password) {
         showError('Please fill in all fields');
         return;
       }
@@ -293,7 +293,7 @@
         const response = await fetch('/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nickname, password })
+          body: JSON.stringify({ email, password })
         });
 
         const data = await response.json();
