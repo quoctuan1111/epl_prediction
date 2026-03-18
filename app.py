@@ -25,7 +25,9 @@ import joblib
 import numpy as np
 import pandas as pd
 import requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, session, redirect, url_for
+from flask_session import Session
+from functools import wraps
 from tracking_store.prediction_store import (
     get_accuracy_dashboard,
     get_admin_predictions,
@@ -37,8 +39,23 @@ from tracking_store.prediction_store import (
     result_label_from_score,
     write_prediction,
 )
+from tracking_store.user_store import (
+    init_user_db,
+    register_user,
+    login_user,
+    get_user,
+    update_user_profile,
+    change_password,
+)
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# Session configuration
+# ---------------------------------------------------------------------------
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+Session(app)
 
 # ---------------------------------------------------------------------------
 # Paths
