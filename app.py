@@ -285,6 +285,24 @@ def _reload_data():
 
 
 init_tracking_db()
+init_user_db()
+
+
+# ---------------------------------------------------------------------------
+# Authentication decorator
+# ---------------------------------------------------------------------------
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Allow JSON API calls without login (they'll use client_id)
+        if request.method == 'POST' and request.is_json:
+            return f(*args, **kwargs)
+        # For page views, require login
+        if 'user_id' not in session:
+            return redirect(url_for('login_page'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +406,108 @@ def build_feature_vector(h: dict, a: dict, home_team: str, away_team: str,
 
 
 # ---------------------------------------------------------------------------
+# Authentication Routes
+# ---------------------------------------------------------------------------
+
+@app.route("/register", methods=["GET", "POST"])
+def register_page():
+    if request.method == "GET":
+        return render_template("register.html")
+    
+    data = request.get_json(silent=True) or {}
+    nickname = data.get("nickname", "").strip()
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+    
+    result = register_user(nickname, email, password)
+    
+    if result["success"]:
+        # Auto-login after registration
+        session['user_id'] = result['user_id']
+        session['nickname'] = result['nickname']
+        return jsonify({"success": True, "redirect": url_for('index')})
+    
+    return jsonify({"success": False, "error": result.get("error", "Registration failed")}), 400
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if request.method == "GET":
+        # If already logged in, redirect to predictor
+        if 'user_id' in session:
+            return redirect(url_for('index'))
+        return render_template("login.html")
+    
+    data = request.get_json(silent=True) or {}
+    nickname = data.get("nickname", "").strip()
+    password = data.get("password", "").strip()
+    
+    result = login_user(nickname, password)
+    
+    if result["success"]:
+        session['user_id'] = result['user_id']
+        session['nickname'] = result['nickname']
+        session['email'] = result['email']
+        return jsonify({"success": True, "redirect": url_for('index')})
+    
+    return jsonify({"success": False, "error": result.get("error", "Login failed")}), 401
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for('login_page'))
+
+
+@app.route("/api/user")
+def api_user():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = get_user(session['user_id'])
+    if not user:
+        session.clear()
+        return jsonify({"error": "User not found"}), 404
+    
+    return jsonify(user)
+
+
+@app.route("/api/user/update", methods=["POST"])
+def api_user_update():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    data = request.get_json(silent=True) or {}
+    nickname = data.get("nickname")
+    email = data.get("email")
+    
+    result = update_user_profile(session['user_id'], nickname=nickname, email=email)
+    
+    if result["success"]:
+        # Update session if nickname changed
+        if nickname:
+            session['nickname'] = nickname
+        if email:
+            session['email'] = email
+        return jsonify(result)
+    
+    return jsonify(result), 400
+
+
+@app.route("/api/user/change-password", methods=["POST"])
+def api_change_password():
+    if 'user_id' not in session:
+        return jsonify({"error": "Not logged in"}), 401
+    
+    data = request.get_json(silent=True) or {}
+    old_password = data.get("old_password", "")
+    new_password = data.get("new_password", "")
+    
+    result = change_password(session['user_id'], old_password, new_password)
+    return jsonify(result) if result["success"] else (jsonify(result), 400)
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @app.route("/health")
@@ -400,11 +520,13 @@ def env_test():
     return {"key_loaded": bool(key)}
 
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html", teams=TEAMS)
 
 
 @app.route("/team_form")
+@login_required
 def team_form_page():
     return render_template("team_form.html", teams=TEAMS)
 
@@ -421,8 +543,12 @@ def predict():
     away_team = data.get("away_team", "")
     home_rest = int(data.get("home_rest", 7))
     away_rest = int(data.get("away_rest", 7))
+    
+    # Use logged-in user_id if available, otherwise use client_id from request
+    user_id = session.get('user_id')
     source_client_id = data.get("client_id", "")
-    client_id = normalize_client_id(source_client_id)
+    client_id = user_id if user_id else normalize_client_id(source_client_id)
+    
     fixture_date = str(data.get("fixture_date", "")).strip() or None
 
     if home_team not in TEAMS or away_team not in TEAMS:
