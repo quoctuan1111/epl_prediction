@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register — EPL Match Predictor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="icon" type="image" href="logo/EPLPRE.png">
+  <link rel="icon" type="image/png" href="logo/EPLPRE.png">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -71,6 +71,25 @@
     header p {
       color: var(--muted);
       font-size: 14px;
+    }
+
+    .logo-container {
+      margin-bottom: 20px;
+    }
+    .logo-container img {
+      max-width: 80px;
+      height: auto;
+      animation: fadeInDown 0.6s ease;
+    }
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .auth-card {
@@ -222,6 +241,9 @@
 <body>
   <div class="container">
     <header>
+      <div class="logo-container">
+        <img src="logo/EPLPRE.png" alt="EPL Predictor Logo" />
+      </div>
       <div class="badge">⚽ Join Now</div>
       <h1>EPL Match Predictor</h1>
       <p>Create account & start predicting</p>

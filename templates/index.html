@@ -6,7 +6,7 @@
   <title> EPL Match Predictor</title>
   <meta name="description" content="Predict English Premier League match outcomes using machine learning. Get Win/Draw/Loss probabilities powered by an advanced WDL model." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="icon" type="image" href="logo/EPLPRE.png">
+  <link rel="icon" type="image/png" href="logo/EPLPRE.png">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -83,6 +83,24 @@
       background: rgba(248,113,113,0.2);
     }
 
+    .logo-container {
+      margin-bottom: 20px;
+    }
+    .logo-container img {
+      max-width: 100px;
+      height: auto;
+      animation: fadeInDown 0.6s ease;
+    }
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-16px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
     header .badge {
       display: inline-block;
       font-size: 11px;
@@ -576,6 +594,10 @@
       <span class="user-nickname" id="user-nickname">Loading...</span>
     </div>
     <a href="/logout" class="btn-logout">Logout</a>
+  </div>
+
+  <div class="logo-container">
+    <img src="logo/EPLPRE.png" alt="EPL Predictor Logo" />
   </div>
 
   <div class="badge">Machine Learning</div>
