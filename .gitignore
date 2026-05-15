@@ -32,3 +32,5 @@ Thumbs.db
 
 # Reports / generated images (optional — remove if you want to commit them)
 reports/*.png
+
+flask_session/
