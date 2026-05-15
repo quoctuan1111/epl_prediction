@@ -36,3 +36,18 @@ def insert_prediction(row: dict):
         return resp
     except Exception as exc:
         return {"error": str(exc)}
+
+
+def insert_profile(row: dict):
+    """Insert a user profile row into Supabase `profiles` table.
+
+    Best-effort: returns the Supabase response or an error dict.
+    """
+    if not is_configured():
+        return None
+
+    try:
+        resp = _client.table("profiles").insert(row).execute()
+        return resp
+    except Exception as exc:
+        return {"error": str(exc)}

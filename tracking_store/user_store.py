@@ -126,6 +126,23 @@ def register_user(nickname: str, email: str, password: str) -> dict:
             (user_id, nickname, email, password_hash, created_at, created_at)
         )
         conn.commit()
+        # Best-effort: sync profile to Supabase if configured (non-blocking)
+        try:
+            from tracking_store.supabase_client import is_configured, insert_profile
+            if is_configured():
+                supa_row = {
+                    "id": user_id,
+                    "nickname": nickname,
+                    "email": email,
+                    "created_at": created_at,
+                }
+                res = insert_profile(supa_row)
+                if isinstance(res, dict) and res.get("error"):
+                    print("Supabase profile sync error:", res.get("error"))
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
         return {
             "success": True,
             "user_id": user_id,
