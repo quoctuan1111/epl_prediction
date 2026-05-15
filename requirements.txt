@@ -11,3 +11,4 @@ scipy
 requests
 python-dotenv
 werkzeug
+supabase

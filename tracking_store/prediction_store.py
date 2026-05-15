@@ -2,6 +2,7 @@ import os
 import sqlite3
 import uuid
 from datetime import datetime, timezone
+import traceback
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 TRACKING_DB = os.path.join(BASE_DIR, "data", "tracking", "prediction_tracking.db")
@@ -159,6 +160,34 @@ def write_prediction(
         conn.commit()
     finally:
         conn.close()
+
+    # Optionally sync to Supabase (best-effort, do not fail main flow)
+    try:
+        from tracking_store.supabase_client import is_configured, insert_prediction
+        if is_configured():
+            supa_row = {
+                "id": prediction_id,
+                "client_id": normalized_client_id,
+                "created_at": created_at,
+                "fixture_date": fixture_date_value,
+                "home_team": home_team,
+                "away_team": away_team,
+                "predicted_label": predicted_label,
+                "p_home": p_home,
+                "p_draw": p_draw,
+                "p_away": p_away,
+                "confidence": confidence,
+                "source_client_id": normalized_source_client_id,
+                "request_ip": normalized_request_ip,
+                "user_agent": normalized_user_agent,
+            }
+            res = insert_prediction(supa_row)
+            if isinstance(res, dict) and res.get("error"):
+                # keep going but log
+                print("Supabase sync error:", res.get("error"))
+    except Exception:
+        print("Supabase sync failed:")
+        traceback.print_exc()
 
     return prediction_id
 
