@@ -34,3 +34,7 @@ Thumbs.db
 reports/*.png
 
 flask_session/
+# Local tracking DB used for users and predictions
+data/tracking/*.db
+data/tracking/prediction_tracking.db
+flask_session/5ac1267a13b6379abcc58c6b9d8f3b94
