@@ -64,7 +64,9 @@ def insert_profile(row: dict):
         return None
 
     try:
-        resp = _client.table("profiles").insert(row).execute()
+        # Backfill and profile sync should be idempotent. Use id as the conflict
+        # target so reruns update the existing profile row instead of failing.
+        resp = _client.table("profiles").upsert(row, on_conflict="id").execute()
         return resp
     except Exception as exc:
         logging.exception("Supabase insert_profile failed: %s", exc)

@@ -12,6 +12,10 @@ from dotenv import load_dotenv
 load_dotenv()
 import sys
 
+# Backfill is an admin-only task. It needs service-role access because the
+# `profiles` table is protected by RLS and anon inserts will be rejected.
+os.environ["SUPABASE_USE_SERVICE_ROLE"] = "true"
+
 # Ensure project root is on sys.path so imports like `tracking_store` work
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 if BASE_DIR not in sys.path:
@@ -25,7 +29,10 @@ TRACKING_DB = os.path.join(BASE_DIR, "data", "tracking", "prediction_tracking.db
 
 def main():
     if not is_configured():
-        print("Supabase not configured. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env")
+        print(
+            "Supabase not configured for backfill. Set SUPABASE_URL, "
+            "SUPABASE_SERVICE_ROLE_KEY, and SUPABASE_USE_SERVICE_ROLE=true in .env"
+        )
         return
 
     if not os.path.exists(TRACKING_DB):
