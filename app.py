@@ -113,12 +113,30 @@ API_TEAM_MAP = {
 # Load data & model once at startup
 # ---------------------------------------------------------------------------
 
-df    = pd.read_csv(FEATURED_DATA, parse_dates=["Date"])
-model = joblib.load(MODEL_PATH)
+DATA_READY = False
+MODEL_READY = False
 
-available_feat_cols = [c for c in FEATURE_COLS if c in df.columns]
-TEAMS = sorted(set(df["HomeTeam"].unique()) | set(df["AwayTeam"].unique()))
-_feature_means = df[available_feat_cols].mean().to_dict()
+# Load data & model safely at startup. If either fails, the app continues
+# to run so health/readiness checks and admin actions can inspect status.
+try:
+    df = pd.read_csv(FEATURED_DATA, parse_dates=["Date"])
+    DATA_READY = True
+except Exception as exc:
+    app.logger.exception("Could not load featured data from %s: %s", FEATURED_DATA, exc)
+    import pandas as _pd
+    df = _pd.DataFrame()
+
+try:
+    model = joblib.load(MODEL_PATH)
+    MODEL_READY = True
+except Exception as exc:
+    app.logger.exception("Could not load model from %s: %s", MODEL_PATH, exc)
+    model = None
+
+# Compute derived structures even when data is missing so endpoints don't crash.
+available_feat_cols = [c for c in FEATURE_COLS if c in df.columns] if DATA_READY else []
+TEAMS = sorted(set(df["HomeTeam"].unique()) | set(df["AwayTeam"].unique())) if DATA_READY else []
+_feature_means = df[available_feat_cols].mean().to_dict() if DATA_READY and available_feat_cols else {}
 
 
 def _normalise_team_name(name: str) -> str:
@@ -514,6 +532,12 @@ def api_change_password():
 def health():
     return {"status": "ok"}
 
+
+@app.route("/ready")
+def ready():
+    """Readiness endpoint: reports whether data and model are loaded."""
+    return jsonify({"data_ready": DATA_READY, "model_ready": MODEL_READY})
+
 @app.route("/env-test")
 def env_test():
     key = os.environ.get("FOOTBALL_DATA_API_KEY")
@@ -550,6 +574,11 @@ def predict():
     client_id = user_id if user_id else normalize_client_id(source_client_id)
     
     fixture_date = str(data.get("fixture_date", "")).strip() or None
+
+    if not DATA_READY:
+        return jsonify({"error": "Service not ready: data unavailable"}), 503
+    if not MODEL_READY or model is None:
+        return jsonify({"error": "Service not ready: model unavailable"}), 503
 
     if home_team not in TEAMS or away_team not in TEAMS:
         return jsonify({"error": "Invalid team name"}), 400
@@ -692,6 +721,11 @@ def last_refresh():
 @app.route("/upcoming")
 def upcoming():
     """Return upcoming EPL fixtures with model predictions."""
+    if not DATA_READY:
+        return jsonify({"error": "Service not ready: data unavailable"}), 503
+    if not MODEL_READY or model is None:
+        return jsonify({"error": "Service not ready: model unavailable"}), 503
+
     try:
         sys.path.insert(0, BASE_DIR)
         from data_processing.upcoming_fixtures import get_fixtures
@@ -821,8 +855,12 @@ def admin_predictions():
       offset     — pagination offset (default 0)
       secret     — must match env ADMIN_SECRET if set
     """
-    secret_env = os.environ.get("ADMIN_SECRET", "")
-    if secret_env and request.args.get("secret", "") != secret_env:
+    secret_env = os.environ.get("ADMIN_SECRET")
+    # Require ADMIN_SECRET to be set in the environment for admin access.
+    if not secret_env:
+        return jsonify({"error": "Admin endpoint not configured"}), 403
+    header_secret = request.headers.get("X-ADMIN-SECRET", "")
+    if header_secret != secret_env:
         return jsonify({"error": "Unauthorized"}), 401
 
     client_id  = normalize_client_id(request.args.get("client_id", ""), fallback="")
@@ -844,6 +882,8 @@ def team_form_data():
     team = request.args.get("team", "")
     window = int(request.args.get("window", 10))
     window = 5 if window <= 5 else 10
+    if not DATA_READY:
+        return jsonify({"error": "Service not ready: data unavailable"}), 503
 
     if team not in TEAMS:
         return jsonify({"error": "Invalid team"}), 400
