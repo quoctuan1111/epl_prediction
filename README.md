@@ -34,7 +34,7 @@ epl_prediction/
 
 ---
 
-## 🔧 Setupp
+## 🔧 Setup
 
 ```bash
 pip install pandas numpy scikit-learn xgboost matplotlib seaborn joblib scipy
